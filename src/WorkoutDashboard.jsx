@@ -28,6 +28,12 @@ function getTodayKey() {
   return ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][new Date().getDay()];
 }
 
+// Full date key for habits — resets each calendar day
+function getTodayDateKey() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 function fmt(n) { return Math.round(n).toLocaleString(); }
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
@@ -255,6 +261,120 @@ function WarmUpPanel() {
   );
 }
 
+// ── Weight Chart ──────────────────────────────────────────────────────────────
+function WeightChart({ data, viewMode }) {
+  // Build points based on view mode
+  let points = [];
+
+  if (viewMode === "month") {
+    points = data.slice(-30);
+  } else {
+    // Year view: last entry per calendar month, last 12 months
+    const monthMap = {};
+    data.forEach(entry => {
+      // date stored as en-AU: "DD/MM/YYYY"
+      const parts = entry.date.split("/");
+      if (parts.length === 3) {
+        const key = `${parts[2]}-${parts[1]}`; // YYYY-MM
+        monthMap[key] = entry.kg;
+      }
+    });
+    const sortedKeys = Object.keys(monthMap).sort().slice(-12);
+    points = sortedKeys.map(key => ({ date: key, kg: monthMap[key] }));
+  }
+
+  if (points.length < 2) {
+    return (
+      <div style={{ padding: "24px 0", textAlign: "center" }}>
+        <p style={{ fontSize: 12, color: T.txtMuted, margin: 0 }}>
+          Log at least 2 entries to see your trend
+        </p>
+      </div>
+    );
+  }
+
+  const W = 320, H = 160;
+  const padL = 36, padR = 28, padT = 16, padB = 28;
+  const chartW = W - padL - padR;
+  const chartH = H - padT - padB;
+
+  const allKg = points.map(p => p.kg);
+  const minKg = Math.min(...allKg, USER.goalWeightKg) - 1;
+  const maxKg = Math.max(...allKg) + 1;
+  const range = maxKg - minKg || 1;
+
+  const xScale = i => padL + (i / (points.length - 1)) * chartW;
+  const yScale = kg => padT + chartH - ((kg - minKg) / range) * chartH;
+  const goalY = yScale(USER.goalWeightKg);
+
+  const linePath = points.map((p, i) => `${i === 0 ? "M" : "L"} ${xScale(i).toFixed(1)} ${yScale(p.kg).toFixed(1)}`).join(" ");
+
+  // X-axis labels: show ~5 labels max
+  const labelStep = Math.max(1, Math.ceil(points.length / 5));
+
+  return (
+    <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ display: "block", overflow: "visible" }}>
+      {/* Horizontal grid + Y labels */}
+      {[0, 0.25, 0.5, 0.75, 1].map((pct, i) => {
+        const kg = minKg + pct * range;
+        const y = padT + chartH - pct * chartH;
+        return (
+          <g key={i}>
+            <line x1={padL} y1={y} x2={W - padR} y2={y}
+              stroke={T.border} strokeWidth="0.5" />
+            <text x={padL - 4} y={y + 3.5} fill={T.txtMuted} fontSize="8" textAnchor="end">
+              {Math.round(kg)}
+            </text>
+          </g>
+        );
+      })}
+
+      {/* Goal line */}
+      <line x1={padL} y1={goalY} x2={W - padR} y2={goalY}
+        stroke={T.green} strokeWidth="1.2" strokeDasharray="5 3" opacity="0.7" />
+      <text x={W - padR + 3} y={goalY + 3.5} fill={T.green} fontSize="8" opacity="0.8">goal</text>
+
+      {/* Weight line */}
+      <path d={linePath} fill="none" stroke={T.blue} strokeWidth="2"
+        strokeLinecap="round" strokeLinejoin="round" />
+
+      {/* Data points */}
+      {points.map((p, i) => (
+        <g key={i}>
+          <circle cx={xScale(i)} cy={yScale(p.kg)} r="4"
+            fill={T.blue} stroke={T.surface} strokeWidth="2" />
+          {/* Value label on first and last */}
+          {(i === 0 || i === points.length - 1) && (
+            <text x={xScale(i)} y={yScale(p.kg) - 8}
+              fill={T.txtPrimary} fontSize="8.5" textAnchor="middle" fontWeight="600">
+              {p.kg}
+            </text>
+          )}
+        </g>
+      ))}
+
+      {/* X-axis labels */}
+      {points.map((p, i) => {
+        if (i !== 0 && i !== points.length - 1 && i % labelStep !== 0) return null;
+        let label;
+        if (viewMode === "month") {
+          const parts = p.date.split("/");
+          label = parts.length === 3 ? `${parts[0]}/${parts[1]}` : p.date;
+        } else {
+          const [y, m] = p.date.split("-");
+          label = new Date(parseInt(y), parseInt(m) - 1).toLocaleDateString("en-AU", { month: "short" });
+        }
+        return (
+          <text key={i} x={xScale(i)} y={H - 4}
+            fill={T.txtMuted} fontSize="8" textAnchor="middle">
+            {label}
+          </text>
+        );
+      })}
+    </svg>
+  );
+}
+
 // ── Navigation tabs ──────────────────────────────────────────────────────────
 const TABS = [
   { id: "today", label: "Today" },
@@ -275,6 +395,10 @@ export default function WorkoutDashboard() {
   const [openTimers, setOpenTimers] = useState({});
   const [openStretch, setOpenStretch] = useState(null);
   const [openPillar, setOpenPillar] = useState(null);
+  const [chartView, setChartView] = useState("month");
+  const [editingIdx, setEditingIdx] = useState(null);
+  const [editValue, setEditValue] = useState("");
+
   const today = getTodayKey();
   const todaySchedule = WEEKLY_SCHEDULE[weekMode][today];
   const todaySession = todaySchedule?.session;
@@ -292,13 +416,14 @@ export default function WorkoutDashboard() {
     return completedSets[`${today}_${exId}`] || 0;
   }
 
+  // Use full date key so habits reset every calendar day
   function toggleHabit(id) {
-    const key = `${today}_${id}`;
+    const key = `${getTodayDateKey()}_${id}`;
     setHabitLog(prev => ({ ...prev, [key]: !prev[key] }));
   }
 
   function habitDone(id) {
-    return !!habitLog[`${today}_${id}`];
+    return !!habitLog[`${getTodayDateKey()}_${id}`];
   }
 
   function addWeight() {
@@ -306,6 +431,24 @@ export default function WorkoutDashboard() {
     if (!w || w < 40 || w > 200) return;
     setWeightLog(prev => [...prev, { date: new Date().toLocaleDateString("en-AU"), kg: w }]);
     setNewWeight("");
+  }
+
+  function deleteWeight(idx) {
+    setWeightLog(prev => prev.filter((_, i) => i !== idx));
+    if (editingIdx === idx) { setEditingIdx(null); setEditValue(""); }
+  }
+
+  function startEdit(idx, kg) {
+    setEditingIdx(idx);
+    setEditValue(String(kg));
+  }
+
+  function saveEdit(idx) {
+    const w = parseFloat(editValue);
+    if (!w || w < 40 || w > 200) return;
+    setWeightLog(prev => prev.map((entry, i) => i === idx ? { ...entry, kg: w } : entry));
+    setEditingIdx(null);
+    setEditValue("");
   }
 
   const sessionExercises = todaySession?.exercises || [];
@@ -331,7 +474,7 @@ export default function WorkoutDashboard() {
       <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
         {[
           { key: "busy", label: "Busy week", sub: "3 days · full body" },
-          { key: "regular", label: "Regular week", sub: "5 days · split" },
+          { key: "regular", label: "Regular week", sub: "4 days · split" },
         ].map(({ key, label, sub }) => (
           <button key={key} onClick={() => setWeekMode(key)}
             style={{ flex: 1, padding: "12px 14px", borderRadius: 10, cursor: "pointer",
@@ -419,8 +562,8 @@ export default function WorkoutDashboard() {
             </div>
           )}
 
-          {/* B-Bars optionals */}
-          {sessionBbars.length > 0 && (
+          {/* B-Bars — only on workout days (rest days show B-Bars inside the rest card below) */}
+          {!isRestDay && sessionBbars.length > 0 && (
             <div style={{ marginBottom: 20 }}>
               <p style={{ fontSize: 13, fontWeight: 600, color: "#a78bfa", margin: "0 0 6px" }}>
                 B-Bars desk breaks
@@ -441,6 +584,7 @@ export default function WorkoutDashboard() {
             </div>
           )}
 
+          {/* Rest day — combined active rest + B-Bars in one card */}
           {isRestDay && (
             <Card>
               <p style={{ fontSize: 15, fontWeight: 600, color: T.txtPrimary, marginBottom: 8 }}>
@@ -448,14 +592,19 @@ export default function WorkoutDashboard() {
               </p>
               <p style={{ fontSize: 13, color: T.txtSecondary, lineHeight: 1.7, marginBottom: 14 }}>
                 Take a 20–30 min walk. End with the 10-min stretch routine if it's one of your stretch days.
-                B-Bars dead hangs are perfect today — no recovery cost, huge spine benefit.
+                B-Bars below are perfect today — no recovery cost, huge spine and mobility benefit.
               </p>
               {sessionBbars.length > 0 && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {sessionBbars.map(ex => (
-                    <ExerciseCard key={ex.id} ex={ex} isOptional />
-                  ))}
-                </div>
+                <>
+                  <p style={{ fontSize: 12, fontWeight: 600, color: T.purple, margin: "0 0 8px" }}>
+                    B-Bars · anytime today
+                  </p>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {sessionBbars.map(ex => (
+                      <ExerciseCard key={ex.id} ex={ex} isOptional />
+                    ))}
+                  </div>
+                </>
               )}
             </Card>
           )}
@@ -493,14 +642,19 @@ export default function WorkoutDashboard() {
             const isRest = !sess?.exercises?.length;
             return (
               <Card key={day} style={{ marginBottom: 10 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: isRest ? 0 : 10 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: isRest && !sched?.note ? 0 : 10 }}>
                   <div>
                     <span style={{ fontSize: 14, fontWeight: 600, color: sess?.color || T.txtMuted }}>{day} — </span>
                     <span style={{ fontSize: 14, fontWeight: 600, color: T.txtPrimary }}>
                       {isRest ? "Rest" : sess?.label}
                     </span>
                   </div>
-                  <span style={{ fontSize: 11, color: T.txtMuted }}>{sched?.note}</span>
+                  {sched?.note ? (
+                    <span style={{ fontSize: 11, color: T.amber, background: T.amber + "15",
+                      padding: "2px 8px", borderRadius: 20, border: `0.5px solid ${T.amber}44` }}>
+                      {sched.note}
+                    </span>
+                  ) : null}
                 </div>
                 {!isRest && (
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
@@ -675,6 +829,8 @@ export default function WorkoutDashboard() {
             <p style={{ fontSize: 15, fontWeight: 600, color: T.txtPrimary, margin: "0 0 14px" }}>
               Weight tracker
             </p>
+
+            {/* Stats row */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0,1fr))", gap: 10, marginBottom: 16 }}>
               {[
                 { label: "Starting", val: `${USER.weightKg} kg`, color: T.txtSecondary },
@@ -688,30 +844,32 @@ export default function WorkoutDashboard() {
               ))}
             </div>
 
-            {weightLog.length > 0 && (
-              <div style={{ marginBottom: 14 }}>
-                {/* Simple sparkline */}
-                <div style={{ background: T.surface2, borderRadius: 8, padding: "12px 14px", marginBottom: 10 }}>
-                  {weightLog.slice(-8).map((entry, i) => {
-                    const pct = Math.min(100, Math.max(0, ((entry.kg - USER.goalWeightKg) / (USER.weightKg - USER.goalWeightKg)) * 100));
-                    return (
-                      <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
-                        <span style={{ fontSize: 10, color: T.txtMuted, width: 60, flexShrink: 0 }}>{entry.date}</span>
-                        <div style={{ flex: 1, background: T.surface3, borderRadius: 4, height: 8 }}>
-                          <div style={{ width: `${pct}%`, height: "100%", background: T.blue,
-                            borderRadius: 4, transition: "width 0.4s" }} />
-                        </div>
-                        <span style={{ fontSize: 12, fontWeight: 600, color: T.txtPrimary, width: 50, textAlign: "right" }}>
-                          {entry.kg} kg
-                        </span>
-                      </div>
-                    );
-                  })}
+            {/* Chart */}
+            {weightLog.length >= 2 && (
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                  <p style={{ fontSize: 13, fontWeight: 600, color: T.txtPrimary, margin: 0 }}>Progress chart</p>
+                  <div style={{ display: "flex", background: T.surface2, borderRadius: 8, padding: 3,
+                    border: `1px solid ${T.border}` }}>
+                    {["month", "year"].map(v => (
+                      <button key={v} onClick={() => setChartView(v)}
+                        style={{ padding: "4px 12px", borderRadius: 6, border: "none", cursor: "pointer",
+                          background: chartView === v ? T.surface3 : "transparent",
+                          color: chartView === v ? T.txtPrimary : T.txtMuted,
+                          fontSize: 11, fontWeight: chartView === v ? 600 : 400 }}>
+                        {v.charAt(0).toUpperCase() + v.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div style={{ background: T.surface2, borderRadius: 10, padding: "12px 8px 4px" }}>
+                  <WeightChart data={weightLog} viewMode={chartView} />
                 </div>
               </div>
             )}
 
-            <div style={{ display: "flex", gap: 8 }}>
+            {/* Log entry input */}
+            <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
               <input type="number" placeholder="Enter weight (kg)" value={newWeight}
                 onChange={e => setNewWeight(e.target.value)}
                 onKeyDown={e => e.key === "Enter" && addWeight()}
@@ -723,9 +881,73 @@ export default function WorkoutDashboard() {
                 Log
               </button>
             </div>
-            <p style={{ fontSize: 11, color: T.txtMuted, marginTop: 8 }}>
+            <p style={{ fontSize: 11, color: T.txtMuted, margin: "0 0 14px" }}>
               Log every Monday morning, before eating, after waking.
             </p>
+
+            {/* Log history with edit / delete */}
+            {weightLog.length > 0 && (
+              <div>
+                <p style={{ fontSize: 12, fontWeight: 600, color: T.txtSecondary, margin: "0 0 8px" }}>
+                  Log history
+                </p>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6,
+                  maxHeight: 260, overflowY: "auto" }}>
+                  {[...weightLog].reverse().map((entry, ri) => {
+                    const idx = weightLog.length - 1 - ri;
+                    const isEditing = editingIdx === idx;
+                    return (
+                      <div key={idx} style={{ display: "flex", alignItems: "center", gap: 8,
+                        background: T.surface2, borderRadius: 8, padding: "8px 12px",
+                        border: `1px solid ${isEditing ? T.blue + "66" : T.border}` }}>
+                        <span style={{ fontSize: 11, color: T.txtMuted, minWidth: 62 }}>{entry.date}</span>
+                        {isEditing ? (
+                          <>
+                            <input type="number" value={editValue}
+                              onChange={e => setEditValue(e.target.value)}
+                              onKeyDown={e => { if (e.key === "Enter") saveEdit(idx); if (e.key === "Escape") setEditingIdx(null); }}
+                              autoFocus
+                              style={{ flex: 1, padding: "4px 8px", borderRadius: 6,
+                                border: `1px solid ${T.blue}`, background: T.surface3,
+                                color: T.txtPrimary, fontSize: 13, outline: "none" }} />
+                            <button onClick={() => saveEdit(idx)}
+                              style={{ padding: "4px 10px", borderRadius: 6, border: "none",
+                                background: T.blue, color: T.bg, fontSize: 11, fontWeight: 600, cursor: "pointer" }}>
+                              Save
+                            </button>
+                            <button onClick={() => setEditingIdx(null)}
+                              style={{ padding: "4px 10px", borderRadius: 6, border: `1px solid ${T.border}`,
+                                background: "transparent", color: T.txtMuted, fontSize: 11, cursor: "pointer" }}>
+                              Cancel
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: T.txtPrimary }}>
+                              {entry.kg} kg
+                            </span>
+                            <button onClick={() => startEdit(idx, entry.kg)}
+                              title="Edit"
+                              style={{ width: 28, height: 28, borderRadius: 6, border: `1px solid ${T.border}`,
+                                background: "transparent", color: T.txtMuted, fontSize: 13,
+                                cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                              ✏️
+                            </button>
+                            <button onClick={() => deleteWeight(idx)}
+                              title="Delete"
+                              style={{ width: 28, height: 28, borderRadius: 6, border: `1px solid ${T.border}`,
+                                background: "transparent", color: T.red, fontSize: 13,
+                                cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                              🗑
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </Card>
 
           <Card>

@@ -68,8 +68,23 @@ making changes or building new features.
 ### Two modes
 | Mode | Days | Duration | Structure |
 |------|------|----------|-----------|
-| Busy week | 3 days (Mon/Wed/Fri) | ~30 min | Full body each session |
-| Regular week | 5 days (Mon–Fri) | ~35 min | Split by muscle group |
+| Busy week | 3 days (Mon/Wed/Fri) + optional Sat | ~30 min | Full body each session |
+| Regular week | 4 days (Mon/Tue/Thu/Fri) + optional Sat | ~35 min | Split by muscle group |
+
+### A/B exercise rotation
+Exercises within each session rotate every 2 weeks to prevent adaptation and add variety.
+`getWeekVariant()` in `workouts.js` returns `"A"` or `"B"` based on ISO week number (2-week cycle).
+`resolveSession(schedDay, variant)` picks the correct session from `WEEKLY_SCHEDULE`.
+- **Week A**: Standard exercise order (push-led upper, explosive lower, etc.)
+- **Week B**: Alternative exercise order (shoulder-led upper, hinge-led lower, etc.)
+The UI shows a "Week A" or "Week B" badge in the Today and Week tabs.
+
+### Optional Saturday (both modes)
+A lighter bonus session on Saturday — 2–3 sets per exercise, lower volume.
+Only do this if energy is high. It's labelled "Optional" in amber in the UI and does not count as a core training day.
+- **Busy Sat A**: Push-ups, Squats, Plank
+- **Busy Sat B**: Wide Push-ups, Reverse Lunges, Mountain Climbers
+- **Regular Sat A/B**: 3-set versions of the above
 
 ### Warm-up (ALWAYS — 3 min before every session)
 Do these before touching the main workout. Non-negotiable at 35+ with a sedentary job.
@@ -140,7 +155,10 @@ B-Bars: Hanging knee raises (high), Dead hang (high)
 **Fri — Full body**
 Same as busy week full body session but with 4 sets per exercise.
 
-**Sat / Sun — Rest**
+**Sat — Optional bonus session**
+Lighter version (2–3 sets). Only if energy allows. B-Bars also fine.
+
+**Sun — Rest**
 B-Bars only: Dead hang (high), Bar-assisted deep squat hold (low)
 Sun = main weekly meal prep day.
 
@@ -271,6 +289,9 @@ const THEME = {
 
 ### Phase 2 — Progress tracking
 - [x] Weight log — enter weight, edit/delete entries, SVG chart (month/year view) toward 75 kg goal
+- [x] Weight log — edit both kg and date per entry (date picker + kg field in edit row)
+- [x] A/B exercise rotation — exercises alternate every 2 weeks via ISO week number
+- [x] Optional Saturday bonus session (both busy and regular modes, lighter volume)
 - [ ] Streak tracker — consecutive days with session logged
 - [ ] Weekly completion summary
 - [ ] Progression hints — prompt user to upgrade variation when hitting top of rep range
@@ -299,15 +320,18 @@ fitness-app/
 ├── package.json
 ├── vite.config.js
 ├── tailwind.config.js
+├── api/                             ← Vercel serverless functions (Notion proxy)
+│   ├── habits.js                    ← GET/POST daily habit entries to Notion
+│   └── weight.js                    ← GET/POST/PATCH/DELETE weight entries to Notion
 ├── src/
 │   ├── main.jsx
 │   ├── App.jsx
 │   ├── data/
-│   │   ├── workouts.js              ← all exercise + schedule data
+│   │   ├── workouts.js              ← all exercise + schedule data; exports getWeekVariant(), resolveSession()
 │   │   ├── nutrition.js             ← meal plan data (from meal_plan_dashboard)
 │   │   └── coaching.js              ← pillars, habits, stretch routine, roadmap
 │   ├── components/
-│   │   ├── WorkoutDashboard.jsx     ← main view, day selector
+│   │   ├── WorkoutDashboard.jsx     ← main view, day selector, all tabs
 │   │   ├── SessionLogger.jsx        ← tick off sets, rest timer
 │   │   ├── ExerciseCard.jsx         ← expandable card with cue + video
 │   │   ├── WarmUp.jsx               ← warm-up flow before session
@@ -329,6 +353,27 @@ fitness-app/
 
 ---
 
+## Notion sync architecture
+
+The app is deployed on Vercel (jh-fitness-tracker.vercel.app). Cross-device sync runs through Notion via Vercel serverless API routes that keep the `NOTION_TOKEN` server-side.
+
+**Strategy**: localStorage is primary (offline-first). Notion syncs in the background. UI never blocks on network.
+
+| Data | localStorage key | Notion DB env var | Syncs on |
+|------|-----------------|-------------------|----------|
+| Weight log | `wt_weight` | `NOTION_WEIGHT_DB_ID` | add / edit / delete |
+| Daily habits | `wt_habits` | `NOTION_HABITS_DB_ID` | every toggle |
+| Workout sets | `wt_sets` | — (localStorage only) | never — too granular |
+| Week mode | `wt_mode` | — | never |
+
+**Habit log key format**: `YYYY-MM-DD_habitId` (e.g. `2026-05-03_water`) — resets each calendar day automatically.
+
+**Backward compatibility**: old habit log entries stored as plain booleans; new entries stored as `{ done: boolean, notionId: string }`. Both formats supported in `habitDone()` and `habitNotionId()`.
+
+**Date format**: Notion stores dates as ISO `YYYY-MM-DD`. Legacy localStorage entries may be `DD/MM/YYYY`. The `displayDate()` and `toISODate()` helpers in WorkoutDashboard.jsx normalise both.
+
+---
+
 ## Notes for Claude Code
 
 - Always read CLAUDE.md before building or modifying anything
@@ -339,3 +384,5 @@ fitness-app/
 - When building new features, check CLAUDE.md for user context before assuming anything
 - Progress is more important than perfection — ship working features, iterate
 - The warm-up is mandatory in the UX — don't let user skip to exercises without seeing it
+- A/B rotation is automatic — never add a manual A/B toggle for the user; `getWeekVariant()` handles it
+- When adding new session types, always define them in SESSIONS as A/B pairs and update WEEKLY_SCHEDULE accordingly

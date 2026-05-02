@@ -36,6 +36,48 @@ function getTodayDateKey() {
 
 function fmt(n) { return Math.round(n).toLocaleString(); }
 
+// ─── Date helpers ─────────────────────────────────────────────────────────────
+// Display a date string (handles both ISO YYYY-MM-DD and legacy DD/MM/YYYY)
+function displayDate(dateStr) {
+  if (!dateStr) return "";
+  if (dateStr.includes("-")) {
+    const [y, m, d] = dateStr.split("-");
+    return `${d}/${m}/${y}`;
+  }
+  return dateStr; // already DD/MM/YYYY (legacy)
+}
+
+// ─── Notion sync helpers ──────────────────────────────────────────────────────
+async function notionPost(path, body) {
+  const res = await fetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`${path} POST ${res.status}`);
+  return res.json();
+}
+
+async function notionPatch(path, body) {
+  const res = await fetch(path, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`${path} PATCH ${res.status}`);
+  return res.json();
+}
+
+async function notionDelete(path, body) {
+  const res = await fetch(path, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`${path} DELETE ${res.status}`);
+  return res.json();
+}
+
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
 function Pill({ label, bg, color, border }) {
@@ -398,8 +440,49 @@ export default function WorkoutDashboard() {
   const [chartView, setChartView] = useState("month");
   const [editingIdx, setEditingIdx] = useState(null);
   const [editValue, setEditValue] = useState("");
+  const [syncStatus, setSyncStatus] = useState(null); // null | "syncing" | "synced" | "offline"
 
   const today = getTodayKey();
+
+  // ── Load from Notion on mount (cross-device sync) ─────────────────────────
+  useEffect(() => {
+    async function loadFromNotion() {
+      setSyncStatus("syncing");
+      let ok = true;
+      try {
+        // Weight log
+        const wRes = await fetch("/api/weight");
+        if (wRes.ok) {
+          const entries = await wRes.json();
+          if (entries.length > 0) {
+            setWeightLog(entries.map(e => ({ date: e.date, kg: e.kg, notionId: e.id })));
+          }
+        }
+      } catch { ok = false; }
+
+      try {
+        // Today's habits
+        const date = getTodayDateKey();
+        const hRes = await fetch(`/api/habits?date=${date}`);
+        if (hRes.ok) {
+          const notionHabits = await hRes.json();
+          if (Object.keys(notionHabits).length > 0) {
+            setHabitLog(prev => {
+              const updated = { ...prev };
+              Object.entries(notionHabits).forEach(([habitId, { notionId, done }]) => {
+                updated[`${date}_${habitId}`] = { done, notionId };
+              });
+              return updated;
+            });
+          }
+        }
+      } catch { ok = false; }
+
+      setSyncStatus(ok ? "synced" : "offline");
+      setTimeout(() => setSyncStatus(null), 3000);
+    }
+    loadFromNotion();
+  }, []);
   const todaySchedule = WEEKLY_SCHEDULE[weekMode][today];
   const todaySession = todaySchedule?.session;
   const isRestDay = !todaySession?.exercises?.length;
@@ -416,26 +499,61 @@ export default function WorkoutDashboard() {
     return completedSets[`${today}_${exId}`] || 0;
   }
 
-  // Use full date key so habits reset every calendar day
-  function toggleHabit(id) {
-    const key = `${getTodayDateKey()}_${id}`;
-    setHabitLog(prev => ({ ...prev, [key]: !prev[key] }));
-  }
-
+  // Handles both legacy boolean values and new { done, notionId } objects
   function habitDone(id) {
-    return !!habitLog[`${getTodayDateKey()}_${id}`];
+    const val = habitLog[`${getTodayDateKey()}_${id}`];
+    if (val && typeof val === "object") return val.done;
+    return !!val;
   }
 
-  function addWeight() {
+  function habitNotionId(id) {
+    const val = habitLog[`${getTodayDateKey()}_${id}`];
+    if (val && typeof val === "object") return val.notionId || null;
+    return null;
+  }
+
+  async function toggleHabit(id) {
+    const key = `${getTodayDateKey()}_${id}`;
+    const newDone = !habitDone(id);
+    const existingNotionId = habitNotionId(id);
+
+    // Optimistic update immediately
+    setHabitLog(prev => ({ ...prev, [key]: { done: newDone, notionId: existingNotionId } }));
+
+    // Background sync to Notion
+    try {
+      const data = await notionPost("/api/habits", {
+        date: getTodayDateKey(), habitId: id, done: newDone, notionId: existingNotionId,
+      });
+      if (data.notionId && !existingNotionId) {
+        setHabitLog(prev => ({ ...prev, [key]: { done: newDone, notionId: data.notionId } }));
+      }
+    } catch { /* offline — localStorage already updated */ }
+  }
+
+  async function addWeight() {
     const w = parseFloat(newWeight);
     if (!w || w < 40 || w > 200) return;
-    setWeightLog(prev => [...prev, { date: new Date().toLocaleDateString("en-AU"), kg: w }]);
+    const entry = { date: getTodayDateKey(), kg: w };
+    setWeightLog(prev => [...prev, entry]);
     setNewWeight("");
+    try {
+      const data = await notionPost("/api/weight", entry);
+      if (data.id) {
+        setWeightLog(prev => prev.map((e, i) =>
+          i === prev.length - 1 && !e.notionId ? { ...e, notionId: data.id } : e
+        ));
+      }
+    } catch { /* offline — entry saved to localStorage */ }
   }
 
-  function deleteWeight(idx) {
+  async function deleteWeight(idx) {
+    const entry = weightLog[idx];
     setWeightLog(prev => prev.filter((_, i) => i !== idx));
     if (editingIdx === idx) { setEditingIdx(null); setEditValue(""); }
+    if (entry?.notionId) {
+      try { await notionDelete("/api/weight", { id: entry.notionId }); } catch {}
+    }
   }
 
   function startEdit(idx, kg) {
@@ -443,12 +561,16 @@ export default function WorkoutDashboard() {
     setEditValue(String(kg));
   }
 
-  function saveEdit(idx) {
+  async function saveEdit(idx) {
     const w = parseFloat(editValue);
     if (!w || w < 40 || w > 200) return;
-    setWeightLog(prev => prev.map((entry, i) => i === idx ? { ...entry, kg: w } : entry));
+    const entry = weightLog[idx];
+    setWeightLog(prev => prev.map((e, i) => i === idx ? { ...e, kg: w } : e));
     setEditingIdx(null);
     setEditValue("");
+    if (entry?.notionId) {
+      try { await notionPatch("/api/weight", { id: entry.notionId, kg: w }); } catch {}
+    }
   }
 
   const sessionExercises = todaySession?.exercises || [];
@@ -461,13 +583,24 @@ export default function WorkoutDashboard() {
       fontFamily: "system-ui, sans-serif", color: T.txtPrimary, boxSizing: "border-box" }}>
 
       {/* Header */}
-      <div style={{ marginBottom: 20 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, margin: "0 0 4px", color: T.txtPrimary }}>
-          Fitness tracker
-        </h1>
-        <p style={{ fontSize: 13, color: T.txtSecondary, margin: 0 }}>
-          85 kg · 170 cm · male · mid-30s · goal: −10 kg + maintain muscle
-        </p>
+      <div style={{ marginBottom: 20, display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <div>
+          <h1 style={{ fontSize: 22, fontWeight: 700, margin: "0 0 4px", color: T.txtPrimary }}>
+            Fitness tracker
+          </h1>
+          <p style={{ fontSize: 13, color: T.txtSecondary, margin: 0 }}>
+            85 kg · 170 cm · male · mid-30s · goal: −10 kg + maintain muscle
+          </p>
+        </div>
+        {syncStatus && (
+          <div style={{ fontSize: 10, fontWeight: 600, padding: "3px 8px", borderRadius: 20,
+            background: syncStatus === "offline" ? T.red + "22" : T.green + "22",
+            color: syncStatus === "offline" ? T.red : T.green,
+            border: `0.5px solid ${syncStatus === "offline" ? T.red : T.green}44`,
+            marginTop: 4, whiteSpace: "nowrap" }}>
+            {syncStatus === "syncing" ? "⟳ Syncing…" : syncStatus === "synced" ? "✓ Synced" : "⚠ Offline"}
+          </div>
+        )}
       </div>
 
       {/* Week mode toggle */}
@@ -900,7 +1033,7 @@ export default function WorkoutDashboard() {
                       <div key={idx} style={{ display: "flex", alignItems: "center", gap: 8,
                         background: T.surface2, borderRadius: 8, padding: "8px 12px",
                         border: `1px solid ${isEditing ? T.blue + "66" : T.border}` }}>
-                        <span style={{ fontSize: 11, color: T.txtMuted, minWidth: 62 }}>{entry.date}</span>
+                        <span style={{ fontSize: 11, color: T.txtMuted, minWidth: 62 }}>{displayDate(entry.date)}</span>
                         {isEditing ? (
                           <>
                             <input type="number" value={editValue}

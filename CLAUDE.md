@@ -100,13 +100,13 @@ Do these before touching the main workout. Non-negotiable at 35+ with a sedentar
 
 ### Regular week split
 
-**Mon / Thu — Upper body**
+**Mon — Upper body**
 
 | Exercise | Sets | Reps | Color | Muscles | Video |
 |----------|------|------|-------|---------|-------|
 | Push-ups | 4 | 10–15 | #60a5fa | Chest, Shoulders, Triceps | https://youtube.com/watch?v=IODxDxX7oi4 |
 | Wide-grip push-ups | 3 | 8–12 | #60a5fa | Chest, Triceps | https://youtube.com/watch?v=IODxDxX7oi4 |
-| Pike push-ups | 4 | 8–12 | #60a5fa | Shoulders, Triceps, Upper chest | https://youtube.com/watch?v=PdnTvBqMPKk |
+| Pike push-ups | 4 | 8–12 | #60a5fa | Shoulders, Triceps, Upper chest | https://youtube.com/watch?v=DG-NcMnfZ_0 |
 | Bodyweight rows (table) | 4 | 10–12 | #f87171 | Back, Biceps, Rear delts | https://youtube.com/watch?v=rloXYB8M3vU |
 | Diamond push-ups | 3 | 6–10 | #60a5fa | Triceps, Inner chest | https://youtube.com/watch?v=J0DnG1_S92I |
 
@@ -120,11 +120,14 @@ B-Bars: Parallel bar dips (low), Scapular pulls (high), Chin-ups (high)
 | Bulgarian split squats | 3 | 10 each | #34d399 | Quads, Glutes, Balance | https://youtube.com/watch?v=2C-uNgKwPLE |
 | Glute bridges | 3 | 15–20 | #34d399 | Glutes, Hamstrings, Lower back | https://youtube.com/watch?v=OUgsJ8-Vi0E |
 | Reverse lunges | 3 | 10 each | #34d399 | Quads, Glutes, Balance | https://youtube.com/watch?v=xrPteyQLGAo |
-| Single-leg Romanian deadlift | 3 | 8 each | #34d399 | Hamstrings, Glutes, Lower back | https://youtube.com/watch?v=UN4g7oVGFJI |
+| Single-leg Romanian deadlift | 3 | 8 each | #34d399 | Hamstrings, Glutes, Lower back | https://youtube.com/watch?v=Zfr6wizR8rs |
 
 B-Bars: Bar-assisted deep squat hold (low), L-sit tuck holds (low), Dead hang (high)
 
-**Wed — Core + cardio**
+**Wed — Rest + meal prep (mid-week batch)**
+B-Bars only: Dead hang (high), Bar-assisted deep squat hold (low)
+
+**Thu — Core + cardio**
 
 | Exercise | Sets | Reps | Color | Muscles | Video |
 |----------|------|------|-------|---------|-------|
@@ -139,6 +142,7 @@ Same as busy week full body session but with 4 sets per exercise.
 
 **Sat / Sun — Rest**
 B-Bars only: Dead hang (high), Bar-assisted deep squat hold (low)
+Sun = main weekly meal prep day.
 
 ---
 
@@ -258,15 +262,15 @@ const THEME = {
 ## App features to build
 
 ### Phase 1 — MVP
-- [ ] View today's workout (auto-detect day of week)
-- [ ] Toggle busy / regular week mode (persist to localStorage)
-- [ ] Warm-up section at top of every session
-- [ ] Session logger — tap to tick off each set, rest timer (60–90 sec countdown)
-- [ ] B-Bars optional section on every day
-- [ ] Coaching cues + YouTube tutorial links per exercise
+- [x] View today's workout (auto-detect day of week)
+- [x] Toggle busy / regular week mode (persist to localStorage)
+- [x] Warm-up section at top of every session
+- [x] Session logger — tap to tick off each set, rest timer (60–90 sec countdown)
+- [x] B-Bars optional section on every day
+- [x] Coaching cues + YouTube tutorial links per exercise
 
 ### Phase 2 — Progress tracking
-- [ ] Weight log — enter weight, chart trend toward 75 kg goal
+- [x] Weight log — enter weight, edit/delete entries, SVG chart (month/year view) toward 75 kg goal
 - [ ] Streak tracker — consecutive days with session logged
 - [ ] Weekly completion summary
 - [ ] Progression hints — prompt user to upgrade variation when hitting top of rep range

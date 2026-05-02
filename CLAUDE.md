@@ -79,12 +79,14 @@ Exercises within each session rotate every 2 weeks to prevent adaptation and add
 - **Week B**: Alternative exercise order (shoulder-led upper, hinge-led lower, etc.)
 The UI shows a "Week A" or "Week B" badge in the Today and Week tabs.
 
-### Optional Saturday (both modes)
-A lighter bonus session on Saturday — 2–3 sets per exercise, lower volume.
-Only do this if energy is high. It's labelled "Optional" in amber in the UI and does not count as a core training day.
-- **Busy Sat A**: Push-ups, Squats, Plank
-- **Busy Sat B**: Wide Push-ups, Reverse Lunges, Mountain Climbers
-- **Regular Sat A/B**: 3-set versions of the above
+### Optional weekend sessions (Sat + Sun, both modes)
+Both Saturday and Sunday are optional — do one or the other, not both.
+A lighter bonus session — 2–3 sets per exercise, lower volume. Only if energy is high.
+Labelled "Optional" in amber in the UI. Does not count as a core training day.
+- **Busy weekend A**: Push-ups, Squats, Plank
+- **Busy weekend B**: Wide Push-ups, Reverse Lunges, Mountain Climbers
+- **Regular weekend A/B**: 3-set versions of the above
+Sunday's note also reminds about meal prep ("Optional · meal prep day").
 
 ### Warm-up (ALWAYS — 3 min before every session)
 Do these before touching the main workout. Non-negotiable at 35+ with a sedentary job.
@@ -156,10 +158,10 @@ B-Bars: Hanging knee raises (high), Dead hang (high)
 Same as busy week full body session but with 4 sets per exercise.
 
 **Sat — Optional bonus session**
-Lighter version (2–3 sets). Only if energy allows. B-Bars also fine.
+Lighter version (2–3 sets). Only if energy allows. B-Bars also fine. Do Sat OR Sun, not both.
 
-**Sun — Rest**
-B-Bars only: Dead hang (high), Bar-assisted deep squat hold (low)
+**Sun — Optional bonus session + meal prep**
+Same optional session as Saturday. Do whichever weekend day suits — skip the other.
 Sun = main weekly meal prep day.
 
 ---

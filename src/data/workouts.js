@@ -357,7 +357,7 @@ export function resolveSession(schedDay, variant) {
 
 // ── Weekly schedule map ──────────────────────────────────────────────────────
 // sessionA / sessionB auto-rotate every 2 weeks via getWeekVariant()
-// optional: true = Saturday bonus session (skip without guilt)
+// optional: true = weekend bonus session (skip without guilt — do Sat OR Sun, not both)
 
 export const WEEKLY_SCHEDULE = {
   busy: {
@@ -366,8 +366,8 @@ export const WEEKLY_SCHEDULE = {
     Wed: { sessionA: SESSIONS.busyFullBody_A, sessionB: SESSIONS.busyFullBody_B, note: "" },
     Thu: { session: SESSIONS.rest, note: "" },
     Fri: { sessionA: SESSIONS.busyFullBody_A, sessionB: SESSIONS.busyFullBody_B, note: "" },
-    Sat: { sessionA: SESSIONS.busyOptional_A, sessionB: SESSIONS.busyOptional_B, note: "Optional — only if you have energy", optional: true },
-    Sun: { session: SESSIONS.rest, note: "Meal prep — main weekly prep" },
+    Sat: { sessionA: SESSIONS.busyOptional_A, sessionB: SESSIONS.busyOptional_B, note: "Optional — do Sat or Sun, not both", optional: true },
+    Sun: { sessionA: SESSIONS.busyOptional_A, sessionB: SESSIONS.busyOptional_B, note: "Optional · meal prep day — do Sat or Sun, not both", optional: true },
   },
   regular: {
     Mon: { sessionA: SESSIONS.regularUpper_A,    sessionB: SESSIONS.regularUpper_B,    note: "" },
@@ -375,8 +375,8 @@ export const WEEKLY_SCHEDULE = {
     Wed: { session: SESSIONS.rest, note: "Meal prep — mid-week batch" },
     Thu: { sessionA: SESSIONS.regularCore_A,     sessionB: SESSIONS.regularCore_B,     note: "" },
     Fri: { sessionA: SESSIONS.regularFullBody_A, sessionB: SESSIONS.regularFullBody_B, note: "" },
-    Sat: { sessionA: SESSIONS.regularOptional_A, sessionB: SESSIONS.regularOptional_B, note: "Optional — only if you have energy", optional: true },
-    Sun: { session: SESSIONS.rest, note: "Meal prep — main weekly prep" },
+    Sat: { sessionA: SESSIONS.regularOptional_A, sessionB: SESSIONS.regularOptional_B, note: "Optional — do Sat or Sun, not both", optional: true },
+    Sun: { sessionA: SESSIONS.regularOptional_A, sessionB: SESSIONS.regularOptional_B, note: "Optional · meal prep day — do Sat or Sun, not both", optional: true },
   },
 };
 

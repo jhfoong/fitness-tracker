@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 
 // ─── Data imports ────────────────────────────────────────────────────────────
-import { WARMUP, SESSIONS, WEEKLY_SCHEDULE, DAY_ORDER } from "./data/workouts";
+import { WARMUP, SESSIONS, WEEKLY_SCHEDULE, DAY_ORDER, getWeekVariant, resolveSession } from "./data/workouts";
 import { USER, PILLARS, DAILY_HABITS, STRETCH_ROUTINE, ROADMAP } from "./data/coaching";
 
 // ─── Theme ───────────────────────────────────────────────────────────────────
@@ -45,6 +45,14 @@ function displayDate(dateStr) {
     return `${d}/${m}/${y}`;
   }
   return dateStr; // already DD/MM/YYYY (legacy)
+}
+
+// Convert any date string to ISO YYYY-MM-DD (for date inputs and Notion)
+function toISODate(dateStr) {
+  if (!dateStr) return "";
+  if (dateStr.includes("-")) return dateStr; // already ISO
+  const [d, m, y] = dateStr.split("/");
+  return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
 }
 
 // ─── Notion sync helpers ──────────────────────────────────────────────────────
@@ -314,10 +322,9 @@ function WeightChart({ data, viewMode }) {
     // Year view: last entry per calendar month, last 12 months
     const monthMap = {};
     data.forEach(entry => {
-      // date stored as en-AU: "DD/MM/YYYY"
-      const parts = entry.date.split("/");
-      if (parts.length === 3) {
-        const key = `${parts[2]}-${parts[1]}`; // YYYY-MM
+      const iso = toISODate(entry.date); // normalise to YYYY-MM-DD
+      if (iso.length === 10) {
+        const key = iso.slice(0, 7); // YYYY-MM
         monthMap[key] = entry.kg;
       }
     });
@@ -400,8 +407,8 @@ function WeightChart({ data, viewMode }) {
         if (i !== 0 && i !== points.length - 1 && i % labelStep !== 0) return null;
         let label;
         if (viewMode === "month") {
-          const parts = p.date.split("/");
-          label = parts.length === 3 ? `${parts[0]}/${parts[1]}` : p.date;
+          const iso = toISODate(p.date); // normalise to YYYY-MM-DD
+          label = iso.length === 10 ? `${iso.slice(8)}/${iso.slice(5, 7)}` : p.date; // DD/MM
         } else {
           const [y, m] = p.date.split("-");
           label = new Date(parseInt(y), parseInt(m) - 1).toLocaleDateString("en-AU", { month: "short" });
@@ -440,9 +447,11 @@ export default function WorkoutDashboard() {
   const [chartView, setChartView] = useState("month");
   const [editingIdx, setEditingIdx] = useState(null);
   const [editValue, setEditValue] = useState("");
+  const [editDate, setEditDate] = useState("");
   const [syncStatus, setSyncStatus] = useState(null); // null | "syncing" | "synced" | "offline"
 
   const today = getTodayKey();
+  const variant = getWeekVariant(); // "A" or "B" — switches every 2 weeks
 
   // ── Load from Notion on mount (cross-device sync) ─────────────────────────
   useEffect(() => {
@@ -484,7 +493,8 @@ export default function WorkoutDashboard() {
     loadFromNotion();
   }, []);
   const todaySchedule = WEEKLY_SCHEDULE[weekMode][today];
-  const todaySession = todaySchedule?.session;
+  const todaySession = resolveSession(todaySchedule, variant);
+  const isOptionalDay = !!todaySchedule?.optional;
   const isRestDay = !todaySession?.exercises?.length;
 
   function toggleSet(exId, setIdx) {
@@ -556,20 +566,23 @@ export default function WorkoutDashboard() {
     }
   }
 
-  function startEdit(idx, kg) {
+  function startEdit(idx, kg, date) {
     setEditingIdx(idx);
     setEditValue(String(kg));
+    setEditDate(toISODate(date));
   }
 
   async function saveEdit(idx) {
     const w = parseFloat(editValue);
     if (!w || w < 40 || w > 200) return;
+    if (!editDate) return;
     const entry = weightLog[idx];
-    setWeightLog(prev => prev.map((e, i) => i === idx ? { ...e, kg: w } : e));
+    setWeightLog(prev => prev.map((e, i) => i === idx ? { ...e, kg: w, date: editDate } : e));
     setEditingIdx(null);
     setEditValue("");
+    setEditDate("");
     if (entry?.notionId) {
-      try { await notionPatch("/api/weight", { id: entry.notionId, kg: w }); } catch {}
+      try { await notionPatch("/api/weight", { id: entry.notionId, kg: w, date: editDate }); } catch {}
     }
   }
 
@@ -606,8 +619,8 @@ export default function WorkoutDashboard() {
       {/* Week mode toggle */}
       <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
         {[
-          { key: "busy", label: "Busy week", sub: "3 days · full body" },
-          { key: "regular", label: "Regular week", sub: "4 days · split" },
+          { key: "busy", label: "Busy week", sub: "3 days + optional Sat" },
+          { key: "regular", label: "Regular week", sub: "4 days + optional Sat" },
         ].map(({ key, label, sub }) => (
           <button key={key} onClick={() => setWeekMode(key)}
             style={{ flex: 1, padding: "12px 14px", borderRadius: 10, cursor: "pointer",
@@ -641,11 +654,29 @@ export default function WorkoutDashboard() {
           <Card style={{ marginBottom: 14 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
               <div>
-                <p style={{ fontSize: 11, color: T.txtMuted, margin: "0 0 4px" }}>
-                  {new Date().toLocaleDateString("en-AU", { weekday: "long", day: "numeric", month: "long" })}
-                </p>
-                <p style={{ fontSize: 20, fontWeight: 700, color: todaySession?.color || T.txtMuted, margin: "0 0 4px" }}>
-                  {isRestDay ? "Rest day" : todaySession?.label}
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                  <p style={{ fontSize: 11, color: T.txtMuted, margin: 0 }}>
+                    {new Date().toLocaleDateString("en-AU", { weekday: "long", day: "numeric", month: "long" })}
+                  </p>
+                  {/* Week A/B variant badge */}
+                  {!isRestDay && (
+                    <span style={{ fontSize: 10, fontWeight: 700, padding: "1px 8px", borderRadius: 20,
+                      background: variant === "A" ? T.blue + "22" : T.purple + "22",
+                      color: variant === "A" ? T.blue : T.purple,
+                      border: `0.5px solid ${variant === "A" ? T.blue : T.purple}66` }}>
+                      Week {variant}
+                    </span>
+                  )}
+                  {/* Optional day badge */}
+                  {isOptionalDay && !isRestDay && (
+                    <span style={{ fontSize: 10, fontWeight: 700, padding: "1px 8px", borderRadius: 20,
+                      background: T.amber + "22", color: T.amber, border: `0.5px solid ${T.amber}66` }}>
+                      Optional
+                    </span>
+                  )}
+                </div>
+                <p style={{ fontSize: 20, fontWeight: 700, color: isOptionalDay && !isRestDay ? T.amber : (todaySession?.color || T.txtMuted), margin: "0 0 4px" }}>
+                  {isRestDay ? "Rest day" : isOptionalDay ? `Optional — ${todaySession?.label}` : todaySession?.label}
                 </p>
                 <p style={{ fontSize: 12, color: T.txtSecondary, margin: 0 }}>
                   {todaySchedule?.note}
@@ -747,22 +778,37 @@ export default function WorkoutDashboard() {
       {/* ── WEEK TAB ──────────────────────────────────────────────────────── */}
       {tab === "week" && (
         <div>
+          {/* Week A/B indicator */}
+          <div style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ fontSize: 12, fontWeight: 700, padding: "4px 14px", borderRadius: 20,
+              background: variant === "A" ? T.blue + "22" : T.purple + "22",
+              color: variant === "A" ? T.blue : T.purple,
+              border: `1px solid ${variant === "A" ? T.blue : T.purple}55` }}>
+              Week {variant}
+            </span>
+            <span style={{ fontSize: 12, color: T.txtMuted }}>
+              Exercises rotate every 2 weeks
+            </span>
+          </div>
+
           <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0,1fr))", gap: 8, marginBottom: 20 }}>
             {DAY_ORDER.map(day => {
               const sched = WEEKLY_SCHEDULE[weekMode][day];
-              const sess = sched?.session;
+              const sess = resolveSession(sched, variant);
               const isToday = day === today;
               const isRest = !sess?.exercises?.length;
+              const isOpt = !!sched?.optional;
+              const dotColor = isOpt ? T.amber : (sess?.color || T.txtMuted);
               return (
                 <div key={day} style={{ borderRadius: 10, padding: "10px 6px", textAlign: "center",
-                  border: `${isToday ? "2px" : "1px"} solid ${isToday ? sess?.color || T.border : T.border}`,
-                  background: isToday ? (sess?.color || T.txtMuted) + "22" : T.surface,
+                  border: `${isToday ? "2px" : "1px"} solid ${isToday ? dotColor : T.border}`,
+                  background: isToday ? dotColor + "22" : T.surface,
                   opacity: isRest && !isToday ? 0.5 : 1 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: sess?.color || T.txtMuted, marginBottom: 4 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: dotColor, marginBottom: 4 }}>
                     {day}
                   </div>
-                  <div style={{ fontSize: 9, color: sess?.color || T.txtMuted, opacity: 0.85, lineHeight: 1.4 }}>
-                    {isRest ? "Rest" : sess?.label}
+                  <div style={{ fontSize: 9, color: dotColor, opacity: 0.85, lineHeight: 1.4 }}>
+                    {isRest ? "Rest" : isOpt ? "Opt" : sess?.label}
                   </div>
                 </div>
               );
@@ -771,24 +817,37 @@ export default function WorkoutDashboard() {
 
           {DAY_ORDER.map(day => {
             const sched = WEEKLY_SCHEDULE[weekMode][day];
-            const sess = sched?.session;
+            const sess = resolveSession(sched, variant);
             const isRest = !sess?.exercises?.length;
+            const isOpt = !!sched?.optional;
+            const labelColor = isOpt ? T.amber : (sess?.color || T.txtMuted);
             return (
-              <Card key={day} style={{ marginBottom: 10 }}>
+              <Card key={day} style={{ marginBottom: 10, borderColor: isOpt ? T.amber + "44" : T.border }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: isRest && !sched?.note ? 0 : 10 }}>
-                  <div>
-                    <span style={{ fontSize: 14, fontWeight: 600, color: sess?.color || T.txtMuted }}>{day} — </span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 14, fontWeight: 600, color: labelColor }}>{day} — </span>
                     <span style={{ fontSize: 14, fontWeight: 600, color: T.txtPrimary }}>
                       {isRest ? "Rest" : sess?.label}
                     </span>
+                    {isOpt && !isRest && (
+                      <span style={{ fontSize: 10, fontWeight: 700, padding: "1px 8px", borderRadius: 20,
+                        background: T.amber + "22", color: T.amber, border: `0.5px solid ${T.amber}66` }}>
+                        Optional
+                      </span>
+                    )}
                   </div>
-                  {sched?.note ? (
+                  {sched?.note && !isOpt ? (
                     <span style={{ fontSize: 11, color: T.amber, background: T.amber + "15",
                       padding: "2px 8px", borderRadius: 20, border: `0.5px solid ${T.amber}44` }}>
                       {sched.note}
                     </span>
                   ) : null}
                 </div>
+                {isOpt && !isRest && (
+                  <p style={{ fontSize: 11, color: T.amber, opacity: 0.85, margin: "0 0 8px" }}>
+                    {sched.note}
+                  </p>
+                )}
                 {!isRest && (
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                     {sess.exercises.map(ex => (
@@ -1030,36 +1089,44 @@ export default function WorkoutDashboard() {
                     const idx = weightLog.length - 1 - ri;
                     const isEditing = editingIdx === idx;
                     return (
-                      <div key={idx} style={{ display: "flex", alignItems: "center", gap: 8,
-                        background: T.surface2, borderRadius: 8, padding: "8px 12px",
+                      <div key={idx} style={{ background: T.surface2, borderRadius: 8, padding: "8px 12px",
                         border: `1px solid ${isEditing ? T.blue + "66" : T.border}` }}>
-                        <span style={{ fontSize: 11, color: T.txtMuted, minWidth: 62 }}>{displayDate(entry.date)}</span>
                         {isEditing ? (
-                          <>
-                            <input type="number" value={editValue}
-                              onChange={e => setEditValue(e.target.value)}
-                              onKeyDown={e => { if (e.key === "Enter") saveEdit(idx); if (e.key === "Escape") setEditingIdx(null); }}
-                              autoFocus
-                              style={{ flex: 1, padding: "4px 8px", borderRadius: 6,
-                                border: `1px solid ${T.blue}`, background: T.surface3,
-                                color: T.txtPrimary, fontSize: 13, outline: "none" }} />
-                            <button onClick={() => saveEdit(idx)}
-                              style={{ padding: "4px 10px", borderRadius: 6, border: "none",
-                                background: T.blue, color: T.bg, fontSize: 11, fontWeight: 600, cursor: "pointer" }}>
-                              Save
-                            </button>
-                            <button onClick={() => setEditingIdx(null)}
-                              style={{ padding: "4px 10px", borderRadius: 6, border: `1px solid ${T.border}`,
-                                background: "transparent", color: T.txtMuted, fontSize: 11, cursor: "pointer" }}>
-                              Cancel
-                            </button>
-                          </>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                            <div style={{ display: "flex", gap: 8 }}>
+                              <input type="date" value={editDate}
+                                onChange={e => setEditDate(e.target.value)}
+                                style={{ flex: 1, padding: "4px 8px", borderRadius: 6,
+                                  border: `1px solid ${T.blue}`, background: T.surface3,
+                                  color: T.txtPrimary, fontSize: 12, outline: "none", colorScheme: "dark" }} />
+                              <input type="number" value={editValue} placeholder="kg"
+                                onChange={e => setEditValue(e.target.value)}
+                                onKeyDown={e => { if (e.key === "Enter") saveEdit(idx); if (e.key === "Escape") { setEditingIdx(null); setEditDate(""); } }}
+                                autoFocus
+                                style={{ width: 70, padding: "4px 8px", borderRadius: 6,
+                                  border: `1px solid ${T.blue}`, background: T.surface3,
+                                  color: T.txtPrimary, fontSize: 13, outline: "none" }} />
+                            </div>
+                            <div style={{ display: "flex", gap: 6 }}>
+                              <button onClick={() => saveEdit(idx)}
+                                style={{ flex: 1, padding: "5px 0", borderRadius: 6, border: "none",
+                                  background: T.blue, color: T.bg, fontSize: 11, fontWeight: 600, cursor: "pointer" }}>
+                                Save
+                              </button>
+                              <button onClick={() => { setEditingIdx(null); setEditDate(""); }}
+                                style={{ flex: 1, padding: "5px 0", borderRadius: 6, border: `1px solid ${T.border}`,
+                                  background: "transparent", color: T.txtMuted, fontSize: 11, cursor: "pointer" }}>
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
                         ) : (
-                          <>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <span style={{ fontSize: 11, color: T.txtMuted, minWidth: 62 }}>{displayDate(entry.date)}</span>
                             <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: T.txtPrimary }}>
                               {entry.kg} kg
                             </span>
-                            <button onClick={() => startEdit(idx, entry.kg)}
+                            <button onClick={() => startEdit(idx, entry.kg, entry.date)}
                               title="Edit"
                               style={{ width: 28, height: 28, borderRadius: 6, border: `1px solid ${T.border}`,
                                 background: "transparent", color: T.txtMuted, fontSize: 13,
@@ -1073,7 +1140,7 @@ export default function WorkoutDashboard() {
                                 cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
                               🗑
                             </button>
-                          </>
+                          </div>
                         )}
                       </div>
                     );

@@ -164,15 +164,14 @@ export const BBARS = {
 };
 
 // ── Session definitions ──────────────────────────────────────────────────────
+// Each workout type has an A and B variant that rotate every 2 weeks.
+// A = push/squat/glute emphasis  |  B = wide/explosive/hinge emphasis
 
 export const SESSIONS = {
-  // Busy week
-  busyFullBody: {
-    id: "busyFullBody",
-    label: "Full body",
-    mode: "busy",
-    days: ["Mon", "Wed", "Fri"],
-    color: "#60a5fa",
+
+  // ── Busy week — Full body ─────────────────────────────────────────────────
+  busyFullBody_A: {
+    id: "busyFullBody_A", label: "Full body", variant: "A", color: "#60a5fa",
     exercises: [
       { ...EXERCISES.pushUps,       sets: 3, repsLabel: "8–12 reps" },
       { ...EXERCISES.squats,        sets: 3, repsLabel: "12–15 reps" },
@@ -183,44 +182,90 @@ export const SESSIONS = {
     ],
     bbars: [BBARS.chinUps, BBARS.dips, BBARS.deadHang],
   },
-
-  // Regular week
-  regularUpper: {
-    id: "regularUpper",
-    label: "Upper body",
-    mode: "regular",
-    days: ["Mon"],
-    color: "#60a5fa",
+  busyFullBody_B: {
+    id: "busyFullBody_B", label: "Full body", variant: "B", color: "#60a5fa",
     exercises: [
-      { ...EXERCISES.pushUps,          sets: 4, repsLabel: "10–15 reps" },
-      { ...EXERCISES.wideGripPushUps,  sets: 3, repsLabel: "8–12 reps" },
-      { ...EXERCISES.pikePushUps,      sets: 4, repsLabel: "8–12 reps" },
-      { ...EXERCISES.tableRows,        sets: 4, repsLabel: "10–12 reps" },
-      { ...EXERCISES.diamondPushUps,   sets: 3, repsLabel: "6–10 reps" },
+      { ...EXERCISES.wideGripPushUps,    sets: 3, repsLabel: "8–12 reps" },
+      { ...EXERCISES.jumpSquats,         sets: 3, repsLabel: "12–15 reps" },
+      { ...EXERCISES.bulgarianSplitSquat,sets: 3, repsLabel: "10 each leg" },
+      { ...EXERCISES.diamondPushUps,     sets: 3, repsLabel: "6–10 reps" },
+      { ...EXERCISES.singleLegRDL,       sets: 3, repsLabel: "8 each leg" },
+      { ...EXERCISES.hollowBody,         sets: 3, repsLabel: "20–30 sec" },
+    ],
+    bbars: [BBARS.chinUps, BBARS.dips, BBARS.deadHang],
+  },
+
+  // ── Busy week — Optional Saturday (lighter, no guilt if skipped) ──────────
+  busyOptional_A: {
+    id: "busyOptional_A", label: "Bonus session", variant: "A", color: "#f59e0b", optional: true,
+    exercises: [
+      { ...EXERCISES.pushUps,      sets: 2, repsLabel: "8–10 reps" },
+      { ...EXERCISES.squats,       sets: 2, repsLabel: "10–12 reps" },
+      { ...EXERCISES.gluteBridges, sets: 2, repsLabel: "12–15 reps" },
+    ],
+    bbars: [BBARS.deadHang, BBARS.deepSquatHold],
+  },
+  busyOptional_B: {
+    id: "busyOptional_B", label: "Bonus session", variant: "B", color: "#f59e0b", optional: true,
+    exercises: [
+      { ...EXERCISES.wideGripPushUps, sets: 2, repsLabel: "8–10 reps" },
+      { ...EXERCISES.reverseLunges,   sets: 2, repsLabel: "8 each leg" },
+      { ...EXERCISES.plank,           sets: 2, repsLabel: "20–30 sec" },
+    ],
+    bbars: [BBARS.deadHang, BBARS.deepSquatHold],
+  },
+
+  // ── Regular week — Upper body ─────────────────────────────────────────────
+  regularUpper_A: {
+    id: "regularUpper_A", label: "Upper body", variant: "A", color: "#60a5fa",
+    exercises: [
+      { ...EXERCISES.pushUps,         sets: 4, repsLabel: "10–15 reps" },
+      { ...EXERCISES.wideGripPushUps, sets: 3, repsLabel: "8–12 reps" },
+      { ...EXERCISES.pikePushUps,     sets: 4, repsLabel: "8–12 reps" },
+      { ...EXERCISES.tableRows,       sets: 4, repsLabel: "10–12 reps" },
+      { ...EXERCISES.diamondPushUps,  sets: 3, repsLabel: "6–10 reps" },
     ],
     bbars: [BBARS.dips, BBARS.scapularPulls, BBARS.chinUps],
   },
-  regularLower: {
-    id: "regularLower",
-    label: "Lower body",
-    mode: "regular",
-    days: ["Tue"],
-    color: "#34d399",
+  regularUpper_B: {
+    id: "regularUpper_B", label: "Upper body", variant: "B", color: "#60a5fa",
+    exercises: [
+      { ...EXERCISES.pikePushUps,     sets: 4, repsLabel: "8–12 reps" },  // shoulders fresh
+      { ...EXERCISES.tableRows,       sets: 4, repsLabel: "10–12 reps" },
+      { ...EXERCISES.diamondPushUps,  sets: 4, repsLabel: "6–10 reps" },
+      { ...EXERCISES.pushUps,         sets: 3, repsLabel: "10–15 reps" },
+      { ...EXERCISES.wideGripPushUps, sets: 3, repsLabel: "8–12 reps" },
+    ],
+    bbars: [BBARS.scapularPulls, BBARS.chinUps, BBARS.dips],
+  },
+
+  // ── Regular week — Lower body ─────────────────────────────────────────────
+  regularLower_A: {
+    id: "regularLower_A", label: "Lower body", variant: "A", color: "#34d399",
     exercises: [
       { ...EXERCISES.jumpSquats,          sets: 4, repsLabel: "12–15 reps" },
-      { ...EXERCISES.bulgarianSplitSquat, sets: 3, repsLabel: "10 each" },
+      { ...EXERCISES.bulgarianSplitSquat, sets: 3, repsLabel: "10 each leg" },
       { ...EXERCISES.gluteBridges,        sets: 3, repsLabel: "15–20 reps" },
       { ...EXERCISES.reverseLunges,       sets: 3, repsLabel: "10 each leg" },
       { ...EXERCISES.singleLegRDL,        sets: 3, repsLabel: "8 each leg" },
     ],
     bbars: [BBARS.deepSquatHold, BBARS.lSitTuck, BBARS.deadHang],
   },
-  regularCore: {
-    id: "regularCore",
-    label: "Core + cardio",
-    mode: "regular",
-    days: ["Thu"],
-    color: "#a78bfa",
+  regularLower_B: {
+    id: "regularLower_B", label: "Lower body", variant: "B", color: "#34d399",
+    exercises: [
+      { ...EXERCISES.singleLegRDL,        sets: 4, repsLabel: "8 each leg" },  // hinge first
+      { ...EXERCISES.bulgarianSplitSquat, sets: 4, repsLabel: "10 each leg" },
+      { ...EXERCISES.squats,              sets: 3, repsLabel: "12–15 reps (3-sec descent)" },
+      { ...EXERCISES.gluteBridges,        sets: 3, repsLabel: "15–20 reps" },
+      { ...EXERCISES.reverseLunges,       sets: 3, repsLabel: "10 each leg" },
+    ],
+    bbars: [BBARS.lSitTuck, BBARS.deepSquatHold, BBARS.deadHang],
+  },
+
+  // ── Regular week — Core + cardio ──────────────────────────────────────────
+  regularCore_A: {
+    id: "regularCore_A", label: "Core + cardio", variant: "A", color: "#a78bfa",
     exercises: [
       { ...EXERCISES.plank,            sets: 4, repsLabel: "30–60 sec" },
       { ...EXERCISES.hollowBody,       sets: 3, repsLabel: "20–30 sec" },
@@ -228,12 +273,19 @@ export const SESSIONS = {
     ],
     bbars: [BBARS.hangingKneeRaises, BBARS.deadHang],
   },
-  regularFullBody: {
-    id: "regularFullBody",
-    label: "Full body",
-    mode: "regular",
-    days: ["Fri"],
-    color: "#f59e0b",
+  regularCore_B: {
+    id: "regularCore_B", label: "Core + cardio", variant: "B", color: "#a78bfa",
+    exercises: [
+      { ...EXERCISES.mountainClimbers, sets: 4, repsLabel: "20 each leg" },  // cardio first
+      { ...EXERCISES.hollowBody,       sets: 4, repsLabel: "20–30 sec" },
+      { ...EXERCISES.plank,            sets: 3, repsLabel: "30–60 sec" },
+    ],
+    bbars: [BBARS.deadHang, BBARS.hangingKneeRaises],
+  },
+
+  // ── Regular week — Full body (Fri) ────────────────────────────────────────
+  regularFullBody_A: {
+    id: "regularFullBody_A", label: "Full body", variant: "A", color: "#f59e0b",
     exercises: [
       { ...EXERCISES.pushUps,       sets: 4, repsLabel: "10–15 reps" },
       { ...EXERCISES.squats,        sets: 4, repsLabel: "12–15 reps" },
@@ -244,37 +296,87 @@ export const SESSIONS = {
     ],
     bbars: [BBARS.chinUps, BBARS.dips, BBARS.deadHang],
   },
+  regularFullBody_B: {
+    id: "regularFullBody_B", label: "Full body", variant: "B", color: "#f59e0b",
+    exercises: [
+      { ...EXERCISES.wideGripPushUps,    sets: 4, repsLabel: "8–12 reps" },
+      { ...EXERCISES.jumpSquats,         sets: 4, repsLabel: "12–15 reps" },
+      { ...EXERCISES.bulgarianSplitSquat,sets: 4, repsLabel: "10 each leg" },
+      { ...EXERCISES.diamondPushUps,     sets: 4, repsLabel: "6–10 reps" },
+      { ...EXERCISES.singleLegRDL,       sets: 4, repsLabel: "8 each leg" },
+      { ...EXERCISES.hollowBody,         sets: 4, repsLabel: "20–30 sec" },
+    ],
+    bbars: [BBARS.dips, BBARS.chinUps, BBARS.deadHang],
+  },
+
+  // ── Regular week — Optional Saturday ─────────────────────────────────────
+  regularOptional_A: {
+    id: "regularOptional_A", label: "Bonus session", variant: "A", color: "#f59e0b", optional: true,
+    exercises: [
+      { ...EXERCISES.pushUps, sets: 3, repsLabel: "8–12 reps" },
+      { ...EXERCISES.squats,  sets: 3, repsLabel: "12–15 reps" },
+      { ...EXERCISES.plank,   sets: 3, repsLabel: "20–30 sec" },
+    ],
+    bbars: [BBARS.deadHang, BBARS.deepSquatHold],
+  },
+  regularOptional_B: {
+    id: "regularOptional_B", label: "Bonus session", variant: "B", color: "#f59e0b", optional: true,
+    exercises: [
+      { ...EXERCISES.wideGripPushUps, sets: 3, repsLabel: "8–12 reps" },
+      { ...EXERCISES.gluteBridges,    sets: 3, repsLabel: "15–20 reps" },
+      { ...EXERCISES.mountainClimbers,sets: 3, repsLabel: "15 each leg" },
+    ],
+    bbars: [BBARS.deadHang, BBARS.deepSquatHold],
+  },
+
+  // ── Rest ──────────────────────────────────────────────────────────────────
   rest: {
-    id: "rest",
-    label: "Rest",
-    mode: "both",
-    days: ["Wed", "Sat", "Sun"],
-    color: "#6b7492",
+    id: "rest", label: "Rest", color: "#6b7492",
     exercises: [],
     bbars: [BBARS.deadHang, BBARS.deepSquatHold],
   },
 };
 
+// ── 2-week variant rotation ──────────────────────────────────────────────────
+// Returns "A" for weeks 1-2, 5-6, 9-10... and "B" for weeks 3-4, 7-8, 11-12...
+export function getWeekVariant() {
+  const now = new Date();
+  const startOfYear = new Date(now.getFullYear(), 0, 1);
+  const weekNum = Math.ceil(((now - startOfYear) / 86400000 + startOfYear.getDay() + 1) / 7);
+  return Math.floor((weekNum - 1) / 2) % 2 === 0 ? "A" : "B";
+}
+
+// Resolve the active session for a schedule day given the current variant
+export function resolveSession(schedDay, variant) {
+  if (!schedDay) return SESSIONS.rest;
+  if (schedDay.sessionA && schedDay.sessionB) {
+    return variant === "A" ? schedDay.sessionA : schedDay.sessionB;
+  }
+  return schedDay.session || SESSIONS.rest;
+}
+
 // ── Weekly schedule map ──────────────────────────────────────────────────────
+// sessionA / sessionB auto-rotate every 2 weeks via getWeekVariant()
+// optional: true = Saturday bonus session (skip without guilt)
 
 export const WEEKLY_SCHEDULE = {
   busy: {
-    Mon: { session: SESSIONS.busyFullBody, note: "" },
-    Tue: { session: SESSIONS.rest,         note: "Meal prep — mid-week batch" },
-    Wed: { session: SESSIONS.busyFullBody, note: "" },
-    Thu: { session: SESSIONS.rest,         note: "" },
-    Fri: { session: SESSIONS.busyFullBody, note: "" },
-    Sat: { session: SESSIONS.rest,         note: "" },
-    Sun: { session: SESSIONS.rest,         note: "Meal prep — main weekly prep" },
+    Mon: { sessionA: SESSIONS.busyFullBody_A, sessionB: SESSIONS.busyFullBody_B, note: "" },
+    Tue: { session: SESSIONS.rest, note: "Meal prep — mid-week batch" },
+    Wed: { sessionA: SESSIONS.busyFullBody_A, sessionB: SESSIONS.busyFullBody_B, note: "" },
+    Thu: { session: SESSIONS.rest, note: "" },
+    Fri: { sessionA: SESSIONS.busyFullBody_A, sessionB: SESSIONS.busyFullBody_B, note: "" },
+    Sat: { sessionA: SESSIONS.busyOptional_A, sessionB: SESSIONS.busyOptional_B, note: "Optional — only if you have energy", optional: true },
+    Sun: { session: SESSIONS.rest, note: "Meal prep — main weekly prep" },
   },
   regular: {
-    Mon: { session: SESSIONS.regularUpper,    note: "" },
-    Tue: { session: SESSIONS.regularLower,    note: "" },
-    Wed: { session: SESSIONS.rest,            note: "Meal prep — mid-week batch" },
-    Thu: { session: SESSIONS.regularCore,     note: "" },
-    Fri: { session: SESSIONS.regularFullBody, note: "" },
-    Sat: { session: SESSIONS.rest,            note: "" },
-    Sun: { session: SESSIONS.rest,            note: "Meal prep — main weekly prep" },
+    Mon: { sessionA: SESSIONS.regularUpper_A,    sessionB: SESSIONS.regularUpper_B,    note: "" },
+    Tue: { sessionA: SESSIONS.regularLower_A,    sessionB: SESSIONS.regularLower_B,    note: "" },
+    Wed: { session: SESSIONS.rest, note: "Meal prep — mid-week batch" },
+    Thu: { sessionA: SESSIONS.regularCore_A,     sessionB: SESSIONS.regularCore_B,     note: "" },
+    Fri: { sessionA: SESSIONS.regularFullBody_A, sessionB: SESSIONS.regularFullBody_B, note: "" },
+    Sat: { sessionA: SESSIONS.regularOptional_A, sessionB: SESSIONS.regularOptional_B, note: "Optional — only if you have energy", optional: true },
+    Sun: { session: SESSIONS.rest, note: "Meal prep — main weekly prep" },
   },
 };
 

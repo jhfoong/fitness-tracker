@@ -61,15 +61,18 @@ export default async function handler(req, res) {
     return res.json({ id: page.id, date, kg });
   }
 
-  // ── PATCH: update an entry's weight ───────────────────────────────────────
+  // ── PATCH: update an entry's weight and/or date ───────────────────────────
   if (req.method === "PATCH") {
-    const { id, kg } = req.body;
+    const { id, kg, date } = req.body;
+    const properties = { Weight_kg: { number: kg } };
+    if (date) {
+      properties.Date = { date: { start: date } };
+      properties.Entry = { title: [{ text: { content: `${date} · ${kg} kg` } }] };
+    }
     await fetch(`https://api.notion.com/v1/pages/${id}`, {
       method: "PATCH",
       headers: notionHeaders(),
-      body: JSON.stringify({
-        properties: { Weight_kg: { number: kg } },
-      }),
+      body: JSON.stringify({ properties }),
     });
     return res.json({ ok: true });
   }

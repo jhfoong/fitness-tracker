@@ -55,6 +55,28 @@ function toISODate(dateStr) {
   return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
 }
 
+// Returns the Monday of the week containing `date` (midnight local time)
+function getWeekStart(date) {
+  const d = new Date(date);
+  const day = d.getDay(); // 0=Sun … 6=Sat
+  d.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+// True if weightLog has at least one entry dated in the current Mon–Sun week
+function hasWeightThisWeek(weightLog) {
+  const weekStart = getWeekStart(new Date());
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekStart.getDate() + 7);
+  return weightLog.some(entry => {
+    const iso = toISODate(entry.date);
+    if (iso.length !== 10) return false;
+    const d = new Date(iso);
+    return d >= weekStart && d < weekEnd;
+  });
+}
+
 // ─── Notion sync helpers ──────────────────────────────────────────────────────
 async function notionPost(path, body) {
   const res = await fetch(path, {
@@ -873,7 +895,11 @@ export default function WorkoutDashboard() {
               Tick them off as you go — they reset every day.
             </p>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {DAILY_HABITS.map(h => {
+              {DAILY_HABITS.filter(h => {
+                // Hide the weigh-in habit once a weight entry exists for this week
+                if (h.id === "weighin") return !hasWeightThisWeek(weightLog);
+                return true;
+              }).map(h => {
                 const done = habitDone(h.id);
                 return (
                   <div key={h.id} onClick={() => toggleHabit(h.id)}

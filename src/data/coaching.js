@@ -81,8 +81,8 @@ export const DAILY_HABITS = [
   },
   {
     id: "deadhang", time: "During work hours", color: "#f59e0b",
-    name: "B-Bars dead hang once per hour",
-    why: "Set a timer. Once per hour, walk to your B-Bars and hang for 20–30 seconds. Posture reset, spine decompressor, and grip builder in one. You'll feel the difference within a week.",
+    name: "B-Bars dead hang 3–5× a day",
+    why: "Aim for 3–5 hangs spread across the day — morning, before/after lunch, and late afternoon works well. 20–30 seconds each. Posture reset, spine decompressor, and grip builder in one. You'll feel the difference within a week.",
   },
   {
     id: "screens", time: "Evening", color: "#f87171",

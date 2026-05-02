@@ -222,7 +222,7 @@ Meal plan dashboard exists. Protein is non-negotiable. Water on waking.
 1. **On waking** — Drink 500ml water before anything else
 2. **Morning (workout days)** — Complete session including warm-up
 3. **All day** — Hit protein target (165g+)
-4. **During work** — B-Bars dead hang once per hour (set a timer)
+4. **During work** — B-Bars dead hang 3–5× a day (morning, before/after lunch, late afternoon)
 5. **Evening** — No screens 30 min before bed
 6. **Weekly** — Weigh in Monday morning, same time, before eating
 

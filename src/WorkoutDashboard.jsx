@@ -738,7 +738,7 @@ export default function WorkoutDashboard() {
               <div style={{ background: "#12121f", border: "1px solid #2a2050", borderRadius: 10,
                 padding: "10px 14px", marginBottom: 10, fontSize: 12, color: T.txtSecondary, lineHeight: 1.6 }}>
                 Keep reps well within your ability. Never do these fatigued — always fresh.
-                Dead hang = once per hour minimum.
+                Dead hang = 3–5 times a day.
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {sessionBbars.map(ex => (

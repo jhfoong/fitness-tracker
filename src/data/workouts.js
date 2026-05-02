@@ -124,7 +124,7 @@ export const BBARS = {
   deadHang: {
     id: "deadHang", name: "Dead hang", tag: "B-Bars", color: "#34d399",
     barHeight: "High bar · 129cm",
-    sets: "20–40 sec", freq: "Once per hour minimum",
+    sets: "20–40 sec", freq: "3–5 times a day",
     muscles: ["Grip", "Spine decompression", "Lats"],
     cue: "Just hang. Fully passive, shoulders relaxed. Decompresses spine after sitting. Do it every time you walk past the bars.",
     video: "https://www.youtube.com/watch?v=PlAE67ovNEo", channel: "Gymless",

@@ -335,15 +335,16 @@ function WarmUpPanel() {
 
 // ── Weight Chart ──────────────────────────────────────────────────────────────
 function WeightChart({ data, viewMode }) {
-  // Build points based on view mode
+  // Build points based on view mode — always sort ascending by date first
+  const sorted = [...data].sort((a, b) => toISODate(a.date).localeCompare(toISODate(b.date)));
   let points = [];
 
   if (viewMode === "month") {
-    points = data.slice(-30);
+    points = sorted.slice(-30);
   } else {
     // Year view: last entry per calendar month, last 12 months
     const monthMap = {};
-    data.forEach(entry => {
+    sorted.forEach(entry => {
       const iso = toISODate(entry.date); // normalise to YYYY-MM-DD
       if (iso.length === 10) {
         const key = iso.slice(0, 7); // YYYY-MM
@@ -641,8 +642,8 @@ export default function WorkoutDashboard() {
       {/* Week mode toggle */}
       <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
         {[
-          { key: "busy", label: "Busy week", sub: "3 days + optional Sat" },
-          { key: "regular", label: "Regular week", sub: "4 days + optional Sat" },
+          { key: "busy", label: "Busy week", sub: "3 days + optional workout" },
+          { key: "regular", label: "Regular week", sub: "4 days + optional workout" },
         ].map(({ key, label, sub }) => (
           <button key={key} onClick={() => setWeekMode(key)}
             style={{ flex: 1, padding: "12px 14px", borderRadius: 10, cursor: "pointer",
@@ -962,29 +963,25 @@ export default function WorkoutDashboard() {
       {tab === "coaching" && (
         <div>
           <SectionHeader number="1" title="The 5 pillars" color={T.blue} />
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-            gap: 10, marginBottom: 24 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 24 }}>
             {PILLARS.map(p => (
               <div key={p.id} style={{ background: T.surface, border: `1px solid ${T.border}`,
-                borderRadius: 12, padding: "14px 16px", cursor: "pointer" }}
-                onClick={() => setOpenPillar(openPillar === p.id ? null : p.id)}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                borderRadius: 12, padding: "14px 16px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
                   <p style={{ fontSize: 15, fontWeight: 600, color: T.txtPrimary, margin: 0 }}>{p.label}</p>
                   <span style={{ fontSize: 10, fontWeight: 600, padding: "2px 9px", borderRadius: 20,
                     background: p.statusBg, color: p.color, border: `0.5px solid ${p.color}66` }}>
                     {p.status}
                   </span>
                 </div>
-                {openPillar === p.id && (
-                  <div style={{ marginTop: 10 }}>
-                    {p.rules.map((r, i) => (
-                      <p key={i} style={{ fontSize: 12, color: T.txtSecondary, lineHeight: 1.7,
-                        margin: "0 0 4px", display: "flex", gap: 8 }}>
-                        <span style={{ color: T.txtMuted, flexShrink: 0 }}>—</span>{r}
-                      </p>
-                    ))}
-                  </div>
-                )}
+                <div>
+                  {p.rules.map((r, i) => (
+                    <p key={i} style={{ fontSize: 12, color: T.txtSecondary, lineHeight: 1.7,
+                      margin: "0 0 4px", display: "flex", gap: 8 }}>
+                      <span style={{ color: p.color, flexShrink: 0 }}>—</span>{r}
+                    </p>
+                  ))}
+                </div>
               </div>
             ))}
           </div>
@@ -1087,14 +1084,15 @@ export default function WorkoutDashboard() {
             )}
 
             {/* Log entry input */}
-            <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-              <input type="number" placeholder="Enter weight (kg)" value={newWeight}
+            <div style={{ display: "flex", gap: 8, marginBottom: 8, maxWidth: 260 }}>
+              <input type="number" placeholder="Weight (kg)" value={newWeight}
                 onChange={e => setNewWeight(e.target.value)}
                 onKeyDown={e => e.key === "Enter" && addWeight()}
-                style={{ flex: 1, padding: "10px 14px", borderRadius: 8, border: `1px solid ${T.border}`,
-                  background: T.surface2, color: T.txtPrimary, fontSize: 13, outline: "none" }} />
+                style={{ flex: 1, minWidth: 0, padding: "10px 12px", borderRadius: 8,
+                  border: `1px solid ${T.border}`, background: T.surface2,
+                  color: T.txtPrimary, fontSize: 13, outline: "none" }} />
               <button onClick={addWeight}
-                style={{ padding: "10px 18px", borderRadius: 8, border: "none",
+                style={{ padding: "10px 20px", borderRadius: 8, border: "none", flexShrink: 0,
                   background: T.blue, color: T.bg, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
                 Log
               </button>
@@ -1118,33 +1116,29 @@ export default function WorkoutDashboard() {
                       <div key={idx} style={{ background: T.surface2, borderRadius: 8, padding: "8px 12px",
                         border: `1px solid ${isEditing ? T.blue + "66" : T.border}` }}>
                         {isEditing ? (
-                          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                            <div style={{ display: "flex", gap: 8 }}>
-                              <input type="date" value={editDate}
-                                onChange={e => setEditDate(e.target.value)}
-                                style={{ flex: 1, padding: "4px 8px", borderRadius: 6,
-                                  border: `1px solid ${T.blue}`, background: T.surface3,
-                                  color: T.txtPrimary, fontSize: 12, outline: "none", colorScheme: "dark" }} />
-                              <input type="number" value={editValue} placeholder="kg"
-                                onChange={e => setEditValue(e.target.value)}
-                                onKeyDown={e => { if (e.key === "Enter") saveEdit(idx); if (e.key === "Escape") { setEditingIdx(null); setEditDate(""); } }}
-                                autoFocus
-                                style={{ width: 70, padding: "4px 8px", borderRadius: 6,
-                                  border: `1px solid ${T.blue}`, background: T.surface3,
-                                  color: T.txtPrimary, fontSize: 13, outline: "none" }} />
-                            </div>
-                            <div style={{ display: "flex", gap: 6 }}>
-                              <button onClick={() => saveEdit(idx)}
-                                style={{ flex: 1, padding: "5px 0", borderRadius: 6, border: "none",
-                                  background: T.blue, color: T.bg, fontSize: 11, fontWeight: 600, cursor: "pointer" }}>
-                                Save
-                              </button>
-                              <button onClick={() => { setEditingIdx(null); setEditDate(""); }}
-                                style={{ flex: 1, padding: "5px 0", borderRadius: 6, border: `1px solid ${T.border}`,
-                                  background: "transparent", color: T.txtMuted, fontSize: 11, cursor: "pointer" }}>
-                                Cancel
-                              </button>
-                            </div>
+                          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                            <input type="date" value={editDate}
+                              onChange={e => setEditDate(e.target.value)}
+                              style={{ flex: 3, minWidth: 0, padding: "5px 8px", borderRadius: 6,
+                                border: `1px solid ${T.blue}`, background: T.surface3,
+                                color: T.txtPrimary, fontSize: 12, outline: "none", colorScheme: "dark" }} />
+                            <input type="number" value={editValue} placeholder="kg"
+                              onChange={e => setEditValue(e.target.value)}
+                              onKeyDown={e => { if (e.key === "Enter") saveEdit(idx); if (e.key === "Escape") { setEditingIdx(null); setEditDate(""); } }}
+                              autoFocus
+                              style={{ flex: 2, minWidth: 0, padding: "5px 8px", borderRadius: 6,
+                                border: `1px solid ${T.blue}`, background: T.surface3,
+                                color: T.txtPrimary, fontSize: 13, outline: "none" }} />
+                            <button onClick={() => saveEdit(idx)}
+                              style={{ padding: "5px 12px", borderRadius: 6, border: "none", flexShrink: 0,
+                                background: T.blue, color: T.bg, fontSize: 11, fontWeight: 600, cursor: "pointer" }}>
+                              Save
+                            </button>
+                            <button onClick={() => { setEditingIdx(null); setEditDate(""); }}
+                              style={{ padding: "5px 10px", borderRadius: 6, border: `1px solid ${T.border}`, flexShrink: 0,
+                                background: "transparent", color: T.txtMuted, fontSize: 11, cursor: "pointer" }}>
+                              ✕
+                            </button>
                           </div>
                         ) : (
                           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>

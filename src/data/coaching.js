@@ -70,9 +70,14 @@ export const DAILY_HABITS = [
     why: "You wake up dehydrated after 7–8 hours. Hydration affects energy, hunger signals, and metabolism. Do this before coffee — takes 30 seconds.",
   },
   {
+    id: "warmup", time: "Morning (workout days)", color: "#f59e0b",
+    name: "Complete your 3-min warm-up",
+    why: "Arm circles, hip circles, squats, leg swings — 3 minutes before every session. At 35+ with a sedentary job this is non-negotiable. Cold joints are an injury risk.",
+  },
+  {
     id: "session", time: "Morning (workout days)", color: "#60a5fa",
-    name: "Complete your session — warm-up included",
-    why: "3-min warm-up + main session + B-Bars throughout the day. Non-negotiable on scheduled days. On rest days, replace with a 20-min walk.",
+    name: "Complete your workout session",
+    why: "Main session after warm-up. Non-negotiable on scheduled days. On rest days, replace with a 20-min walk.",
   },
   {
     id: "protein", time: "All day", color: "#34d399",

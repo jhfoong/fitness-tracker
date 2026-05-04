@@ -193,15 +193,16 @@ function RestTimer({ onDone }) {
 }
 
 // ── Exercise Card ─────────────────────────────────────────────────────────────
-function ExerciseCard({ ex, isOptional, completedSets, onSetDone, showTimer, onToggleTimer }) {
+function ExerciseCard({ ex, isOptional, completedSets, onSetDone, showTimer, onToggleTimer, onOptionalDone }) {
   const [open, setOpen] = useState(false);
+  const [optDone, setOptDone] = useState(false);
   const totalSets = ex.sets || 3;
   const done = completedSets || 0;
   const allDone = done >= totalSets;
 
   return (
     <div style={{ background: isOptional ? "#12121f" : T.surface,
-      border: `1px solid ${open ? T.blue : isOptional ? "#2a2050" : T.border}`,
+      border: `1px solid ${open ? T.blue : isOptional ? (optDone ? T.green + "66" : "#2a2050") : T.border}`,
       borderRadius: 12, overflow: "hidden", transition: "border-color 0.2s",
       opacity: allDone ? 0.6 : 1 }}>
 
@@ -244,6 +245,17 @@ function ExerciseCard({ ex, isOptional, completedSets, onSetDone, showTimer, onT
             ))}
           </div>
         )}
+        {isOptional && (
+          <button onClick={(e) => { e.stopPropagation(); if (!optDone) { setOptDone(true); onOptionalDone?.(); } }}
+            style={{ width: 32, height: 32, borderRadius: "50%", flexShrink: 0,
+              border: `1.5px solid ${optDone ? T.green : T.border}`,
+              background: optDone ? T.green + "33" : "transparent",
+              cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 13, fontWeight: 700, color: optDone ? T.green : T.txtMuted,
+              transition: "all 0.2s" }}>
+            {optDone ? "✓" : "○"}
+          </button>
+        )}
         <span style={{ fontSize: 11, color: T.txtMuted, marginLeft: 4 }}>{open ? "▲" : "▼"}</span>
       </div>
 
@@ -285,7 +297,7 @@ function ExerciseCard({ ex, isOptional, completedSets, onSetDone, showTimer, onT
 }
 
 // ── Warm-up Panel ────────────────────────────────────────────────────────────
-function WarmUpPanel() {
+function WarmUpPanel({ onDone }) {
   const [done, setDone] = useState(false);
   const [open, setOpen] = useState(true);
 
@@ -320,7 +332,7 @@ function WarmUpPanel() {
               </div>
             ))}
           </div>
-          <button onClick={() => setDone(true)}
+          <button onClick={() => { if (!done) { setDone(true); onDone?.(); } }}
             style={{ marginTop: 12, width: "100%", padding: "10px", borderRadius: 8,
               border: `1px solid ${done ? T.green : T.amber}`,
               background: done ? T.green + "22" : T.amber + "22",
@@ -614,6 +626,16 @@ export default function WorkoutDashboard() {
   const doneCount = sessionExercises.filter(ex => getCompleted(ex.id) >= (ex.sets || 3)).length;
   const sessionComplete = sessionExercises.length > 0 && doneCount === sessionExercises.length;
 
+  // Auto-tick session habit when all sets are complete
+  useEffect(() => {
+    if (sessionComplete && !habitDone("session")) toggleHabit("session");
+  }, [sessionComplete]); // eslint-disable-line
+
+  // Convenience: tick a habit only if not already done
+  function autoTickHabit(id) {
+    if (!habitDone(id)) toggleHabit(id);
+  }
+
   return (
     <div style={{ background: T.bg, minHeight: "100vh", padding: "1.5rem",
       fontFamily: "system-ui, sans-serif", color: T.txtPrimary, boxSizing: "border-box" }}>
@@ -725,7 +747,7 @@ export default function WorkoutDashboard() {
           </Card>
 
           {/* Warm-up */}
-          {!isRestDay && <WarmUpPanel />}
+          {!isRestDay && <WarmUpPanel onDone={() => autoTickHabit("warmup")} />}
 
           {/* Main exercises */}
           {!isRestDay && sessionExercises.length > 0 && (
@@ -765,7 +787,9 @@ export default function WorkoutDashboard() {
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {sessionBbars.map(ex => (
-                  <ExerciseCard key={ex.id} ex={ex} isOptional />
+                  <ExerciseCard key={ex.id} ex={ex} isOptional
+                    onOptionalDone={ex.id === "deadHang" ? () => autoTickHabit("deadhang") : undefined}
+                  />
                 ))}
               </div>
             </div>
@@ -788,7 +812,9 @@ export default function WorkoutDashboard() {
                   </p>
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     {sessionBbars.map(ex => (
-                      <ExerciseCard key={ex.id} ex={ex} isOptional />
+                      <ExerciseCard key={ex.id} ex={ex} isOptional
+                        onOptionalDone={ex.id === "deadHang" ? () => autoTickHabit("deadhang") : undefined}
+                      />
                     ))}
                   </div>
                 </>

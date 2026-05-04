@@ -522,14 +522,14 @@ export default function WorkoutDashboard() {
 
   function toggleSet(exId, setIdx) {
     setCompletedSets(prev => {
-      const key = `${today}_${exId}`;
+      const key = `${getTodayDateKey()}_${exId}`;
       const cur = prev[key] || 0;
       return { ...prev, [key]: setIdx < cur ? setIdx : setIdx + 1 };
     });
   }
 
   function getCompleted(exId) {
-    return completedSets[`${today}_${exId}`] || 0;
+    return completedSets[`${getTodayDateKey()}_${exId}`] || 0;
   }
 
   // Handles both legacy boolean values and new { done, notionId } objects

@@ -731,6 +731,27 @@ export default function WorkoutDashboard() {
     }
   }
 
+  const [bulkSyncing, setBulkSyncing] = useState(false);
+
+  async function syncAllWeights() {
+    const unsynced = weightLog.filter(e => !e.notionId);
+    if (!unsynced.length) return;
+    setBulkSyncing(true);
+    try {
+      for (const entry of unsynced) {
+        const data = await notionPost("/api/weight", { date: toISODate(entry.date), kg: entry.kg });
+        if (data.id) {
+          setWeightLog(prev => prev.map(e =>
+            e.date === entry.date && e.kg === entry.kg && !e.notionId
+              ? { ...e, notionId: data.id }
+              : e
+          ));
+        }
+      }
+    } catch { /* offline */ }
+    setBulkSyncing(false);
+  }
+
   const sessionExercises = todaySession?.exercises || [];
   const sessionBbars = todaySession?.bbars || [];
   const doneCount = sessionExercises.filter(ex => getCompleted(ex.id) >= (ex.sets || 3)).length;
@@ -1343,9 +1364,19 @@ export default function WorkoutDashboard() {
             {/* Log history with edit / delete */}
             {weightLog.length > 0 && (
               <div>
-                <p style={{ fontSize: 12, fontWeight: 600, color: T.txtSecondary, margin: "0 0 8px" }}>
-                  Log history
-                </p>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                  <p style={{ fontSize: 12, fontWeight: 600, color: T.txtSecondary, margin: 0 }}>
+                    Log history
+                  </p>
+                  {weightLog.some(e => !e.notionId) && (
+                    <button onClick={syncAllWeights} disabled={bulkSyncing}
+                      style={{ padding: "4px 10px", borderRadius: 6, border: `1px solid ${T.green}44`,
+                        background: T.green + "18", color: T.green, fontSize: 11, fontWeight: 600,
+                        cursor: bulkSyncing ? "default" : "pointer", opacity: bulkSyncing ? 0.6 : 1 }}>
+                      {bulkSyncing ? "⟳ Syncing…" : "↑ Sync all to Notion"}
+                    </button>
+                  )}
+                </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 6,
                   maxHeight: 260, overflowY: "auto" }}>
                   {[...weightLog].reverse().map((entry, ri) => {

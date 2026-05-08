@@ -522,12 +522,34 @@ export default function WorkoutDashboard() {
       setSyncStatus("syncing");
       let ok = true;
       try {
-        // Weight log
+        // Weight log — merge Notion into localStorage, never discard local entries
         const wRes = await fetch("/api/weight");
         if (wRes.ok) {
-          const entries = await wRes.json();
-          if (entries.length > 0) {
-            setWeightLog(entries.map(e => ({ date: e.date, kg: e.kg, notionId: e.id })));
+          const notionEntries = await wRes.json();
+          if (notionEntries.length > 0) {
+            setWeightLog(prev => {
+              // Build a map of Notion entries keyed by notionId for fast lookup
+              const notionById = {};
+              notionEntries.forEach(e => { notionById[e.id] = e; });
+              // Update any local entries that already have a notionId
+              const updated = prev.map(e => {
+                if (e.notionId && notionById[e.notionId]) {
+                  const n = notionById[e.notionId];
+                  return { ...e, date: n.date, kg: n.kg };
+                }
+                return e;
+              });
+              // Add Notion entries that don't exist locally at all
+              const localNotionIds = new Set(prev.map(e => e.notionId).filter(Boolean));
+              notionEntries.forEach(e => {
+                if (!localNotionIds.has(e.id)) {
+                  updated.push({ date: e.date, kg: e.kg, notionId: e.id });
+                }
+              });
+              // Sort by date ascending
+              updated.sort((a, b) => toISODate(a.date).localeCompare(toISODate(b.date)));
+              return updated;
+            });
           }
         }
       } catch { ok = false; }

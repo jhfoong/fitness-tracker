@@ -379,9 +379,9 @@ function WeightChart({ data, viewMode }) {
     // Year view: last entry per calendar month, last 12 months
     const monthMap = {};
     sorted.forEach(entry => {
-      const iso = toISODate(entry.date); // normalise to YYYY-MM-DD
+      const iso = toISODate(entry.date);
       if (iso.length === 10) {
-        const key = iso.slice(0, 7); // YYYY-MM
+        const key = iso.slice(0, 7);
         monthMap[key] = entry.kg;
       }
     });
@@ -399,35 +399,69 @@ function WeightChart({ data, viewMode }) {
     );
   }
 
+  // ── Projection ──────────────────────────────────────────────────────────────
+  const firstDate = new Date(toISODate(points[0].date));
+  const lastDate  = new Date(toISODate(points[points.length - 1].date));
+  const daySpan   = Math.max(1, (lastDate - firstDate) / 86400000);
+  const kgPerDay  = (points[points.length - 1].kg - points[0].kg) / daySpan;
+
+  // Project forward: cap at 90 days or when goal is reached
+  let projDays = 90;
+  if (kgPerDay < -0.001) {
+    const daysToGoal = (USER.goalWeightKg - points[points.length - 1].kg) / kgPerDay;
+    projDays = Math.min(90, Math.ceil(daysToGoal));
+  }
+  const projDate = new Date(lastDate);
+  projDate.setDate(projDate.getDate() + projDays);
+  const projKg = Math.max(
+    USER.goalWeightKg - 1,
+    points[points.length - 1].kg + kgPerDay * projDays
+  );
+  const projDateStr = `${projDate.getFullYear()}-${String(projDate.getMonth()+1).padStart(2,"0")}-${String(projDate.getDate()).padStart(2,"0")}`;
+
+  // ── Scales (date-based x) ───────────────────────────────────────────────────
   const W = 320, H = 160;
-  const padL = 36, padR = 28, padT = 16, padB = 28;
+  const padL = 36, padR = 32, padT = 18, padB = 28;
   const chartW = W - padL - padR;
   const chartH = H - padT - padB;
 
-  const allKg = points.map(p => p.kg);
+  const timeMin   = firstDate.getTime();
+  const timeMax   = projDate.getTime();
+  const timeRange = Math.max(1, timeMax - timeMin);
+
+  const allKg = [...points.map(p => p.kg), projKg];
   const minKg = Math.min(...allKg, USER.goalWeightKg) - 1;
   const maxKg = Math.max(...allKg) + 1;
-  const range = maxKg - minKg || 1;
+  const kgRange = maxKg - minKg || 1;
 
-  const xScale = i => padL + (i / (points.length - 1)) * chartW;
-  const yScale = kg => padT + chartH - ((kg - minKg) / range) * chartH;
-  const goalY = yScale(USER.goalWeightKg);
+  const xT  = d  => padL + ((d.getTime() - timeMin) / timeRange) * chartW;
+  const yKg = kg => padT + chartH - ((kg - minKg) / kgRange) * chartH;
+  const goalY = yKg(USER.goalWeightKg);
 
-  const linePath = points.map((p, i) => `${i === 0 ? "M" : "L"} ${xScale(i).toFixed(1)} ${yScale(p.kg).toFixed(1)}`).join(" ");
+  // Actual line path
+  const linePath = points.map((p, i) => {
+    const x = xT(new Date(toISODate(p.date)));
+    return `${i === 0 ? "M" : "L"} ${x.toFixed(1)} ${yKg(p.kg).toFixed(1)}`;
+  }).join(" ");
 
-  // X-axis labels: show ~5 labels max
+  // Projected line path (from last actual point)
+  const projStartX = xT(lastDate);
+  const projStartY = yKg(points[points.length - 1].kg);
+  const projEndX   = xT(projDate);
+  const projEndY   = yKg(projKg);
+
+  // X-axis labels: show ~5 labels max for actual points
   const labelStep = Math.max(1, Math.ceil(points.length / 5));
 
   return (
     <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ display: "block", overflow: "visible" }}>
       {/* Horizontal grid + Y labels */}
       {[0, 0.25, 0.5, 0.75, 1].map((pct, i) => {
-        const kg = minKg + pct * range;
-        const y = padT + chartH - pct * chartH;
+        const kg = minKg + pct * kgRange;
+        const y  = padT + chartH - pct * chartH;
         return (
           <g key={i}>
-            <line x1={padL} y1={y} x2={W - padR} y2={y}
-              stroke={T.border} strokeWidth="0.5" />
+            <line x1={padL} y1={y} x2={W - padR} y2={y} stroke={T.border} strokeWidth="0.5" />
             <text x={padL - 4} y={y + 3.5} fill={T.txtMuted} fontSize="8" textAnchor="end">
               {Math.round(kg)}
             </text>
@@ -438,45 +472,76 @@ function WeightChart({ data, viewMode }) {
       {/* Goal line */}
       <line x1={padL} y1={goalY} x2={W - padR} y2={goalY}
         stroke={T.green} strokeWidth="1.2" strokeDasharray="5 3" opacity="0.7" />
-      <text x={W - padR + 3} y={goalY + 3.5} fill={T.green} fontSize="8" opacity="0.8">goal</text>
+      <text x={W - padR + 3} y={goalY + 3.5} fill={T.green} fontSize="7.5" opacity="0.8">goal</text>
 
-      {/* Weight line */}
+      {/* Projected line */}
+      <path d={`M ${projStartX.toFixed(1)} ${projStartY.toFixed(1)} L ${projEndX.toFixed(1)} ${projEndY.toFixed(1)}`}
+        fill="none" stroke={T.amber} strokeWidth="1.5" strokeDasharray="4 3"
+        strokeLinecap="round" opacity="0.75" />
+      {/* Projected endpoint */}
+      <circle cx={projEndX} cy={projEndY} r="3"
+        fill="transparent" stroke={T.amber} strokeWidth="1.5" opacity="0.75" />
+      <text x={projEndX} y={projEndY - 7} fill={T.amber} fontSize="7"
+        textAnchor="middle" opacity="0.85">
+        {projKg % 1 === 0 ? projKg : projKg.toFixed(1)}
+      </text>
+
+      {/* Actual weight line */}
       <path d={linePath} fill="none" stroke={T.blue} strokeWidth="2"
         strokeLinecap="round" strokeLinejoin="round" />
 
       {/* Data points */}
-      {points.map((p, i) => (
-        <g key={i}>
-          <circle cx={xScale(i)} cy={yScale(p.kg)} r="4"
-            fill={T.blue} stroke={T.surface} strokeWidth="2" />
-          {/* Value label on first and last */}
-          {(i === 0 || i === points.length - 1) && (
-            <text x={xScale(i)} y={yScale(p.kg) - 8}
-              fill={T.txtPrimary} fontSize="8.5" textAnchor="middle" fontWeight="600">
-              {p.kg}
-            </text>
-          )}
-        </g>
-      ))}
+      {points.map((p, i) => {
+        const x = xT(new Date(toISODate(p.date)));
+        const y = yKg(p.kg);
+        return (
+          <g key={i}>
+            <circle cx={x} cy={y} r="4" fill={T.blue} stroke={T.surface} strokeWidth="2" />
+            {(i === 0 || i === points.length - 1) && (
+              <text x={x} y={y - 7} fill={T.txtSecondary} fontSize="7"
+                textAnchor="middle" fontWeight="500">
+                {p.kg}
+              </text>
+            )}
+          </g>
+        );
+      })}
 
-      {/* X-axis labels */}
+      {/* X-axis labels — actual points */}
       {points.map((p, i) => {
         if (i !== 0 && i !== points.length - 1 && i % labelStep !== 0) return null;
+        const x = xT(new Date(toISODate(p.date)));
         let label;
         if (viewMode === "month") {
-          const iso = toISODate(p.date); // normalise to YYYY-MM-DD
-          label = iso.length === 10 ? `${iso.slice(8)}/${iso.slice(5, 7)}` : p.date; // DD/MM
+          const iso = toISODate(p.date);
+          label = iso.length === 10 ? `${iso.slice(8)}/${iso.slice(5, 7)}` : p.date;
         } else {
-          const [y, m] = p.date.split("-");
-          label = new Date(parseInt(y), parseInt(m) - 1).toLocaleDateString("en-AU", { month: "short" });
+          const [yr, mo] = p.date.split("-");
+          label = new Date(parseInt(yr), parseInt(mo) - 1).toLocaleDateString("en-AU", { month: "short" });
         }
         return (
-          <text key={i} x={xScale(i)} y={H - 4}
-            fill={T.txtMuted} fontSize="8" textAnchor="middle">
+          <text key={i} x={x} y={H - 4} fill={T.txtMuted} fontSize="8" textAnchor="middle">
             {label}
           </text>
         );
       })}
+
+      {/* X-axis label — projected endpoint */}
+      <text x={projEndX} y={H - 4} fill={T.amber} fontSize="7" textAnchor="middle" opacity="0.7">
+        {viewMode === "month"
+          ? `${projDateStr.slice(8)}/${projDateStr.slice(5, 7)}`
+          : new Date(projDate).toLocaleDateString("en-AU", { month: "short" })}
+      </text>
+
+      {/* Legend */}
+      <g>
+        <line x1={padL} y1={padT - 6} x2={padL + 14} y2={padT - 6}
+          stroke={T.blue} strokeWidth="2" strokeLinecap="round" />
+        <text x={padL + 17} y={padT - 3} fill={T.txtMuted} fontSize="7">actual</text>
+        <line x1={padL + 46} y1={padT - 6} x2={padL + 60} y2={padT - 6}
+          stroke={T.amber} strokeWidth="1.5" strokeDasharray="4 3" strokeLinecap="round" opacity="0.8" />
+        <text x={padL + 63} y={padT - 3} fill={T.txtMuted} fontSize="7">projected</text>
+      </g>
     </svg>
   );
 }

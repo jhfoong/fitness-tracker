@@ -64,6 +64,24 @@ function getWeekStart(date) {
   return d;
 }
 
+// ISO week key — e.g. "2026-W20". Swaps are scoped to this, auto-expire next week.
+function getISOWeekKey() {
+  const d = new Date();
+  const startOfYear = new Date(d.getFullYear(), 0, 1);
+  const weekNum = Math.ceil(((d - startOfYear) / 86400000 + startOfYear.getDay() + 1) / 7);
+  return `${d.getFullYear()}-W${String(weekNum).padStart(2, "0")}`;
+}
+
+// Calendar date (YYYY-MM-DD) of a given day name within the current week
+function getDateForDay(dayName) {
+  const DAY_IDX = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  const today = new Date();
+  const diff = DAY_IDX[dayName] - today.getDay();
+  const target = new Date(today);
+  target.setDate(today.getDate() + diff);
+  return `${target.getFullYear()}-${String(target.getMonth() + 1).padStart(2, "0")}-${String(target.getDate()).padStart(2, "0")}`;
+}
+
 // True if weightLog has at least one entry dated in the current Mon–Sun week
 function hasWeightThisWeek(weightLog) {
   const weekStart = getWeekStart(new Date());
@@ -491,6 +509,9 @@ export default function WorkoutDashboard() {
   const [warmupLog, setWarmupLog] = useLocalStorage("wt_warmup", {});
   const [bbarLog, setBbarLog] = useLocalStorage("wt_bbar", {});
   const [startDate] = useLocalStorage("wt_startDate", getTodayDateKey()); // set once, never changes
+  const [swapLog, setSwapLog] = useLocalStorage("wt_swaps", {}); // { "2026-W20": { "Mon": "Thu", "Thu": "Mon" } }
+  const [swapSelectDay, setSwapSelectDay] = useState(null); // day highlighted for swapping in Week tab
+  const [showReschedule, setShowReschedule] = useState(false); // Today tab reschedule picker
 
   const today = getTodayKey();
   const variant = getWeekVariant(); // "A" or "B" — switches every 2 weeks
@@ -534,10 +555,57 @@ export default function WorkoutDashboard() {
     }
     loadFromNotion();
   }, []);
-  const todaySchedule = WEEKLY_SCHEDULE[weekMode][today];
+  // ── Swap helpers ──────────────────────────────────────────────────────────────
+  function getEffectiveDay(day) {
+    const weekSwaps = swapLog[getISOWeekKey()] || {};
+    return weekSwaps[day] || day;
+  }
+
+  function getEffectiveSched(day) {
+    return WEEKLY_SCHEDULE[weekMode][getEffectiveDay(day)];
+  }
+
+  // A day is locked once any sets have been logged against its calendar date
+  function isDayLocked(day) {
+    const dateStr = getDateForDay(day);
+    const sched = getEffectiveSched(day);
+    const sess = resolveSession(sched, variant);
+    if (!sess?.exercises?.length) return false;
+    return sess.exercises.some(ex => (completedSets[`${dateStr}_${ex.id}`] || 0) > 0);
+  }
+
+  function swapDays(dayA, dayB) {
+    if (dayA === dayB) return;
+    const weekKey = getISOWeekKey();
+    setSwapLog(prev => {
+      const weekSwaps = { ...(prev[weekKey] || {}) };
+      if (weekSwaps[dayA] === dayB) {
+        // Already swapped — undo
+        delete weekSwaps[dayA];
+        delete weekSwaps[dayB];
+      } else {
+        // Clean up any previous individual swaps for these days
+        const prevA = weekSwaps[dayA];
+        const prevB = weekSwaps[dayB];
+        if (prevA) delete weekSwaps[prevA];
+        if (prevB) delete weekSwaps[prevB];
+        weekSwaps[dayA] = dayB;
+        weekSwaps[dayB] = dayA;
+      }
+      return { ...prev, [weekKey]: weekSwaps };
+    });
+    setSwapSelectDay(null);
+    setShowReschedule(false);
+  }
+
+  // Today — resolved through swap map
+  const todayEffectiveDay = getEffectiveDay(today);
+  const todaySchedule = WEEKLY_SCHEDULE[weekMode][todayEffectiveDay];
   const todaySession = resolveSession(todaySchedule, variant);
   const isOptionalDay = !!todaySchedule?.optional;
   const isRestDay = !todaySession?.exercises?.length;
+  const isTodaySwapped = todayEffectiveDay !== today;
+  const isTodayLocked = isDayLocked(today);
 
   function toggleSet(exId, setIdx) {
     setCompletedSets(prev => {
@@ -741,7 +809,7 @@ export default function WorkoutDashboard() {
           <Card style={{ marginBottom: 14 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
               <div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
                   <p style={{ fontSize: 11, color: T.txtMuted, margin: 0 }}>
                     {new Date().toLocaleDateString("en-AU", { weekday: "long", day: "numeric", month: "long" })}
                   </p>
@@ -759,6 +827,13 @@ export default function WorkoutDashboard() {
                     <span style={{ fontSize: 10, fontWeight: 700, padding: "1px 8px", borderRadius: 20,
                       background: T.amber + "22", color: T.amber, border: `0.5px solid ${T.amber}66` }}>
                       Optional
+                    </span>
+                  )}
+                  {/* Swapped badge */}
+                  {isTodaySwapped && (
+                    <span style={{ fontSize: 10, fontWeight: 700, padding: "1px 8px", borderRadius: 20,
+                      background: T.purple + "22", color: T.purple, border: `0.5px solid ${T.purple}66` }}>
+                      ↔ Swapped from {todayEffectiveDay}
                     </span>
                   )}
                 </div>
@@ -784,6 +859,49 @@ export default function WorkoutDashboard() {
                 <p style={{ fontSize: 13, color: T.green, fontWeight: 600, margin: 0 }}>
                   Session complete! Great work today ✓
                 </p>
+              </div>
+            )}
+
+            {/* Reschedule — hidden once today is locked */}
+            {!isTodayLocked && (
+              <div style={{ marginTop: 12, borderTop: `1px solid ${T.border}`, paddingTop: 12 }}>
+                <button onClick={() => setShowReschedule(r => !r)}
+                  style={{ fontSize: 11, fontWeight: 600, color: T.txtMuted, background: "none",
+                    border: "none", cursor: "pointer", padding: 0, display: "flex", alignItems: "center", gap: 5 }}>
+                  <span>↔</span>
+                  {showReschedule ? "Cancel" : isTodaySwapped ? "Change swap" : "Reschedule this day"}
+                </button>
+                {showReschedule && (
+                  <div style={{ marginTop: 10 }}>
+                    <p style={{ fontSize: 11, color: T.txtMuted, margin: "0 0 8px" }}>
+                      Swap today with — tap any day:
+                    </p>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      {DAY_ORDER.filter(d => d !== today).map(d => {
+                        const locked = isDayLocked(d);
+                        const isTarget = getEffectiveDay(today) === d || getEffectiveDay(d) === today;
+                        return (
+                          <button key={d} onClick={() => { if (!locked) swapDays(today, d); }}
+                            style={{ padding: "5px 12px", borderRadius: 20, fontSize: 11, fontWeight: 600,
+                              border: `1px solid ${locked ? T.border : isTarget ? T.purple : T.blue}`,
+                              background: locked ? "transparent" : isTarget ? T.purple + "22" : T.blue + "11",
+                              color: locked ? T.txtMuted : isTarget ? T.purple : T.blue,
+                              cursor: locked ? "default" : "pointer", opacity: locked ? 0.5 : 1 }}>
+                            {d}{locked ? " 🔒" : ""}
+                          </button>
+                        );
+                      })}
+                      {isTodaySwapped && (
+                        <button onClick={() => swapDays(today, todayEffectiveDay)}
+                          style={{ padding: "5px 12px", borderRadius: 20, fontSize: 11, fontWeight: 600,
+                            border: `1px solid ${T.red}`, background: T.red + "11",
+                            color: T.red, cursor: "pointer" }}>
+                          Undo swap
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </Card>
@@ -871,53 +989,83 @@ export default function WorkoutDashboard() {
       {/* ── WEEK TAB ──────────────────────────────────────────────────────── */}
       {tab === "week" && (
         <div>
-          {/* Week A/B indicator */}
-          <div style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 10 }}>
+          {/* Week A/B indicator + swap mode hint */}
+          <div style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
             <span style={{ fontSize: 12, fontWeight: 700, padding: "4px 14px", borderRadius: 20,
               background: variant === "A" ? T.blue + "22" : T.purple + "22",
               color: variant === "A" ? T.blue : T.purple,
               border: `1px solid ${variant === "A" ? T.blue : T.purple}55` }}>
               Week {variant}
             </span>
-            <span style={{ fontSize: 12, color: T.txtMuted }}>
-              Exercises rotate every 2 weeks
-            </span>
+            {swapSelectDay ? (
+              <span style={{ fontSize: 12, color: T.amber, fontWeight: 600 }}>
+                ↔ Now tap a day to swap with {swapSelectDay} — or tap {swapSelectDay} again to cancel
+              </span>
+            ) : (
+              <span style={{ fontSize: 12, color: T.txtMuted }}>
+                Tap ↔ on any unlocked day to reschedule
+              </span>
+            )}
           </div>
 
+          {/* Day mini-grid */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0,1fr))", gap: 8, marginBottom: 20 }}>
             {DAY_ORDER.map(day => {
-              const sched = WEEKLY_SCHEDULE[weekMode][day];
+              const sched = getEffectiveSched(day);
               const sess = resolveSession(sched, variant);
               const isToday = day === today;
               const isRest = !sess?.exercises?.length;
               const isOpt = !!sched?.optional;
+              const isSwapped = getEffectiveDay(day) !== day;
+              const locked = isDayLocked(day);
+              const isSelected = swapSelectDay === day;
               const dotColor = isOpt ? T.amber : (sess?.color || T.txtMuted);
+              const borderColor = isSelected ? T.amber : isToday ? dotColor : T.border;
               return (
                 <div key={day} style={{ borderRadius: 10, padding: "10px 6px", textAlign: "center",
-                  border: `${isToday ? "2px" : "1px"} solid ${isToday ? dotColor : T.border}`,
-                  background: isToday ? dotColor + "22" : T.surface,
-                  opacity: isRest && !isToday ? 0.5 : 1 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: dotColor, marginBottom: 4 }}>
-                    {day}
+                  border: `${isSelected || isToday ? "2px" : "1px"} solid ${borderColor}`,
+                  background: isSelected ? T.amber + "22" : isToday ? dotColor + "22" : T.surface,
+                  opacity: isRest && !isToday && !isSwapped ? 0.5 : 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: isSelected ? T.amber : dotColor, marginBottom: 4 }}>
+                    {day}{isSwapped ? " ↔" : ""}
                   </div>
-                  <div style={{ fontSize: 9, color: dotColor, opacity: 0.85, lineHeight: 1.4 }}>
-                    {isRest ? "Rest" : isOpt ? "Opt" : sess?.label}
+                  <div style={{ fontSize: 9, color: isSelected ? T.amber : dotColor, opacity: 0.85, lineHeight: 1.4 }}>
+                    {locked ? "🔒" : isRest ? "Rest" : isOpt ? "Opt" : sess?.label?.split(" ")[0]}
                   </div>
                 </div>
               );
             })}
           </div>
 
+          {/* Day cards */}
           {DAY_ORDER.map(day => {
-            const sched = WEEKLY_SCHEDULE[weekMode][day];
+            const effDay = getEffectiveDay(day);
+            const sched = WEEKLY_SCHEDULE[weekMode][effDay];
             const sess = resolveSession(sched, variant);
             const isRest = !sess?.exercises?.length;
             const isOpt = !!sched?.optional;
+            const isSwapped = effDay !== day;
+            const locked = isDayLocked(day);
+            const isSelected = swapSelectDay === day;
             const labelColor = isOpt ? T.amber : (sess?.color || T.txtMuted);
+            const cardBorder = isSelected ? T.amber : isSwapped ? T.purple + "66" : isOpt ? T.amber + "44" : T.border;
+
+            function handleSwapTap() {
+              if (locked) return;
+              if (swapSelectDay === null) {
+                setSwapSelectDay(day);
+              } else if (swapSelectDay === day) {
+                setSwapSelectDay(null);
+              } else {
+                swapDays(swapSelectDay, day);
+              }
+            }
+
             return (
-              <Card key={day} style={{ marginBottom: 10, borderColor: isOpt ? T.amber + "44" : T.border }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: isRest && !sched?.note ? 0 : 10 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <Card key={day} style={{ marginBottom: 10, borderColor: cardBorder,
+                background: isSelected ? T.amber + "08" : T.surface }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: isRest && !sched?.note ? 0 : 8 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", flex: 1 }}>
                     <span style={{ fontSize: 14, fontWeight: 600, color: labelColor }}>{day} — </span>
                     <span style={{ fontSize: 14, fontWeight: 600, color: T.txtPrimary }}>
                       {isRest ? "Rest" : sess?.label}
@@ -928,15 +1076,26 @@ export default function WorkoutDashboard() {
                         Optional
                       </span>
                     )}
+                    {isSwapped && (
+                      <span style={{ fontSize: 10, fontWeight: 700, padding: "1px 8px", borderRadius: 20,
+                        background: T.purple + "22", color: T.purple, border: `0.5px solid ${T.purple}66` }}>
+                        ↔ {effDay}
+                      </span>
+                    )}
                   </div>
-                  {sched?.note && !isOpt ? (
-                    <span style={{ fontSize: 11, color: T.amber, background: T.amber + "15",
-                      padding: "2px 8px", borderRadius: 20, border: `0.5px solid ${T.amber}44` }}>
-                      {sched.note}
-                    </span>
-                  ) : null}
+                  {/* Swap button */}
+                  <button onClick={handleSwapTap}
+                    title={locked ? "Locked — sets already logged" : isSelected ? "Cancel" : "Swap this day"}
+                    style={{ width: 28, height: 28, borderRadius: 8, flexShrink: 0,
+                      border: `1px solid ${locked ? T.border : isSelected ? T.amber : T.border}`,
+                      background: isSelected ? T.amber + "22" : "transparent",
+                      color: locked ? T.txtMuted : isSelected ? T.amber : T.txtSecondary,
+                      fontSize: 13, cursor: locked ? "default" : "pointer",
+                      display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    {locked ? "🔒" : "↔"}
+                  </button>
                 </div>
-                {isOpt && !isRest && (
+                {isOpt && !isRest && sched?.note && (
                   <p style={{ fontSize: 11, color: T.amber, opacity: 0.85, margin: "0 0 8px" }}>
                     {sched.note}
                   </p>

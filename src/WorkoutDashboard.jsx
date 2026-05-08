@@ -193,16 +193,16 @@ function RestTimer({ onDone }) {
 }
 
 // ── Exercise Card ─────────────────────────────────────────────────────────────
-function ExerciseCard({ ex, isOptional, completedSets, onSetDone, showTimer, onToggleTimer, onOptionalDone }) {
+function ExerciseCard({ ex, isOptional, completedSets, onSetDone, showTimer, onToggleTimer, bbarCount = 0, onBbarTap }) {
   const [open, setOpen] = useState(false);
-  const [optDone, setOptDone] = useState(false);
   const totalSets = ex.sets || 3;
   const done = completedSets || 0;
   const allDone = done >= totalSets;
+  const bbarAllDone = isOptional && bbarCount >= 3;
 
   return (
     <div style={{ background: isOptional ? "#12121f" : T.surface,
-      border: `1px solid ${open ? T.blue : isOptional ? (optDone ? T.green + "66" : "#2a2050") : T.border}`,
+      border: `1px solid ${open ? T.blue : isOptional ? (bbarAllDone ? T.green + "66" : "#2a2050") : T.border}`,
       borderRadius: 12, overflow: "hidden", transition: "border-color 0.2s",
       opacity: allDone ? 0.6 : 1 }}>
 
@@ -246,15 +246,20 @@ function ExerciseCard({ ex, isOptional, completedSets, onSetDone, showTimer, onT
           </div>
         )}
         {isOptional && (
-          <button onClick={(e) => { e.stopPropagation(); if (!optDone) { setOptDone(true); onOptionalDone?.(); } }}
-            style={{ width: 32, height: 32, borderRadius: "50%", flexShrink: 0,
-              border: `1.5px solid ${optDone ? T.green : T.border}`,
-              background: optDone ? T.green + "33" : "transparent",
-              cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: 13, fontWeight: 700, color: optDone ? T.green : T.txtMuted,
-              transition: "all 0.2s" }}>
-            {optDone ? "✓" : "○"}
-          </button>
+          <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+            {[0, 1, 2].map(i => (
+              <button key={i} onClick={(e) => { e.stopPropagation(); if (i >= bbarCount) onBbarTap?.(); }}
+                style={{ width: 26, height: 26, borderRadius: "50%",
+                  border: `1.5px solid ${i < bbarCount ? T.green : T.border}`,
+                  background: i < bbarCount ? T.green + "33" : "transparent",
+                  cursor: i < bbarCount ? "default" : "pointer",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 10, fontWeight: 700, color: i < bbarCount ? T.green : T.txtMuted,
+                  transition: "all 0.15s" }}>
+                {i < bbarCount ? "✓" : i + 1}
+              </button>
+            ))}
+          </div>
         )}
         <span style={{ fontSize: 11, color: T.txtMuted, marginLeft: 4 }}>{open ? "▲" : "▼"}</span>
       </div>
@@ -297,8 +302,7 @@ function ExerciseCard({ ex, isOptional, completedSets, onSetDone, showTimer, onT
 }
 
 // ── Warm-up Panel ────────────────────────────────────────────────────────────
-function WarmUpPanel({ onDone }) {
-  const [done, setDone] = useState(false);
+function WarmUpPanel({ done, onDone }) {
   const [open, setOpen] = useState(true);
 
   return (
@@ -332,7 +336,7 @@ function WarmUpPanel({ onDone }) {
               </div>
             ))}
           </div>
-          <button onClick={() => { if (!done) { setDone(true); onDone?.(); } }}
+          <button onClick={() => { if (!done) onDone?.(); }}
             style={{ marginTop: 12, width: "100%", padding: "10px", borderRadius: 8,
               border: `1px solid ${done ? T.green : T.amber}`,
               background: done ? T.green + "22" : T.amber + "22",
@@ -484,6 +488,9 @@ export default function WorkoutDashboard() {
   const [editValue, setEditValue] = useState("");
   const [editDate, setEditDate] = useState("");
   const [syncStatus, setSyncStatus] = useState(null); // null | "syncing" | "synced" | "offline"
+  const [warmupLog, setWarmupLog] = useLocalStorage("wt_warmup", {});
+  const [bbarLog, setBbarLog] = useLocalStorage("wt_bbar", {});
+  const [startDate] = useLocalStorage("wt_startDate", getTodayDateKey()); // set once, never changes
 
   const today = getTodayKey();
   const variant = getWeekVariant(); // "A" or "B" — switches every 2 weeks
@@ -557,6 +564,27 @@ export default function WorkoutDashboard() {
     return null;
   }
 
+  // ── Warm-up state (lifted to localStorage so Habits tab can drive it) ────────
+  function isWarmupDone() { return !!warmupLog[getTodayDateKey()]; }
+  function markWarmupDone() { setWarmupLog(prev => ({ ...prev, [getTodayDateKey()]: true })); }
+
+  // ── B-Bars state (persisted per day, 0–3 count per exercise) ─────────────────
+  function getBbarCount(exId) { return bbarLog[`${getTodayDateKey()}_${exId}`] || 0; }
+  function tapBbar(exId) {
+    const key = `${getTodayDateKey()}_${exId}`;
+    const cur = bbarLog[key] || 0;
+    if (cur >= 3) return;
+    const newCount = cur + 1;
+    setBbarLog(prev => ({ ...prev, [key]: newCount }));
+    if (exId === "deadHang" && newCount === 3) autoTickHabit("deadhang");
+  }
+
+  // ── Program month (1–3) based on stored start date ────────────────────────────
+  function getProgramMonth() {
+    const days = Math.max(0, Math.floor((new Date() - new Date(startDate)) / 86400000));
+    return Math.min(3, Math.floor(days / 30) + 1);
+  }
+
   async function toggleHabit(id) {
     const key = `${getTodayDateKey()}_${id}`;
     const newDone = !habitDone(id);
@@ -564,6 +592,20 @@ export default function WorkoutDashboard() {
 
     // Optimistic update immediately
     setHabitLog(prev => ({ ...prev, [key]: { done: newDone, notionId: existingNotionId } }));
+
+    // Drive Today tab from Habits (one-way: ticking habit → marks Today done; un-ticking doesn't reverse)
+    if (newDone) {
+      if (id === "warmup") markWarmupDone();
+      if (id === "session") {
+        const dateKey = getTodayDateKey();
+        setCompletedSets(prev => {
+          const updated = { ...prev };
+          sessionExercises.forEach(ex => { updated[`${dateKey}_${ex.id}`] = ex.sets || 3; });
+          return updated;
+        });
+      }
+      if (id === "deadhang") setBbarLog(prev => ({ ...prev, [`${getTodayDateKey()}_deadHang`]: 3 }));
+    }
 
     // Background sync to Notion
     try {
@@ -747,7 +789,7 @@ export default function WorkoutDashboard() {
           </Card>
 
           {/* Warm-up */}
-          {!isRestDay && <WarmUpPanel onDone={() => autoTickHabit("warmup")} />}
+          {!isRestDay && <WarmUpPanel done={isWarmupDone()} onDone={() => { markWarmupDone(); autoTickHabit("warmup"); }} />}
 
           {/* Main exercises */}
           {!isRestDay && sessionExercises.length > 0 && (
@@ -788,7 +830,8 @@ export default function WorkoutDashboard() {
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {sessionBbars.map(ex => (
                   <ExerciseCard key={ex.id} ex={ex} isOptional
-                    onOptionalDone={ex.id === "deadHang" ? () => autoTickHabit("deadhang") : undefined}
+                    bbarCount={getBbarCount(ex.id)}
+                    onBbarTap={() => tapBbar(ex.id)}
                   />
                 ))}
               </div>
@@ -813,7 +856,8 @@ export default function WorkoutDashboard() {
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     {sessionBbars.map(ex => (
                       <ExerciseCard key={ex.id} ex={ex} isOptional
-                        onOptionalDone={ex.id === "deadHang" ? () => autoTickHabit("deadhang") : undefined}
+                        bbarCount={getBbarCount(ex.id)}
+                        onBbarTap={() => tapBbar(ex.id)}
                       />
                     ))}
                   </div>
@@ -1014,9 +1058,11 @@ export default function WorkoutDashboard() {
 
           <SectionHeader number="2" title="3-month roadmap" color={T.green} />
           <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 24 }}>
-            {ROADMAP.map(phase => (
+            {ROADMAP.map(phase => {
+              const isCurrent = phase.month === getProgramMonth();
+              return (
               <div key={phase.month} style={{ borderRadius: 12, overflow: "hidden",
-                border: `1px solid ${T.border}` }}>
+                border: `2px solid ${isCurrent ? phase.color : T.border}` }}>
                 <div style={{ padding: "12px 16px", background: phase.bg,
                   display: "flex", alignItems: "center", gap: 12 }}>
                   <div style={{ width: 36, height: 36, borderRadius: 8, background: phase.color + "33",
@@ -1024,12 +1070,19 @@ export default function WorkoutDashboard() {
                     fontSize: 16, fontWeight: 700, color: phase.color, flexShrink: 0 }}>
                     {phase.month}
                   </div>
-                  <div>
+                  <div style={{ flex: 1 }}>
                     <p style={{ fontSize: 14, fontWeight: 600, color: phase.color, margin: "0 0 2px" }}>
                       Month {phase.month} — {phase.label}
                     </p>
                     <p style={{ fontSize: 11, color: phase.color, opacity: 0.8, margin: 0 }}>{phase.focus}</p>
                   </div>
+                  {isCurrent && (
+                    <span style={{ fontSize: 10, fontWeight: 700, padding: "3px 10px", borderRadius: 20,
+                      background: phase.color + "33", color: phase.color,
+                      border: `1px solid ${phase.color}66`, flexShrink: 0 }}>
+                      You are here
+                    </span>
+                  )}
                 </div>
                 <div style={{ padding: "12px 16px", background: T.surface2 }}>
                   <p style={{ fontSize: 12, color: T.txtSecondary, lineHeight: 1.7, marginBottom: 10 }}>
@@ -1045,7 +1098,8 @@ export default function WorkoutDashboard() {
                   </div>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
 
           <Card>

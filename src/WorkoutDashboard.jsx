@@ -578,6 +578,7 @@ export default function WorkoutDashboard() {
   const [swapSelectDay, setSwapSelectDay] = useState(null); // day highlighted for swapping in Week tab
   const [showReschedule, setShowReschedule] = useState(false); // Today tab reschedule picker
   const [workoutNotionIds, setWorkoutNotionIds] = useLocalStorage("wt_workout_notionids", {});
+  const [manualDoneLog, setManualDoneLog] = useLocalStorage("wt_manual_done", {}); // { "YYYY-MM-DD": true }
 
   const today = getTodayKey();
   const variant = getWeekVariant(); // "A" or "B" — switches every 2 weeks
@@ -786,6 +787,56 @@ export default function WorkoutDashboard() {
         if (data.id) setWorkoutNotionIds(prev => ({ ...prev, [date]: data.id }));
       }
     } catch { /* offline — will sync next time */ }
+  }
+
+  // ── Manual day done/undone (Week tab) ────────────────────────────────────────
+  function isDayDone(day) {
+    return isDayLocked(day) || !!manualDoneLog[getDateForDay(day)];
+  }
+
+  async function toggleDayDone(day) {
+    if (isDayLocked(day)) return; // sets logged — read-only
+    const date = getDateForDay(day);
+    const isNowDone = !manualDoneLog[date];
+
+    // Update manual done log
+    setManualDoneLog(prev => ({ ...prev, [date]: isNowDone }));
+
+    // Mirror into habitLog for that date (so Habits tab reflects it for today)
+    const habitKey = `${date}_session`;
+    setHabitLog(prev => {
+      const existing = prev[habitKey];
+      return { ...prev, [habitKey]: { done: isNowDone, notionId: (existing && typeof existing === "object" ? existing.notionId : null) } };
+    });
+
+    // Sync workout row to Notion
+    const existingId = workoutNotionIds[date];
+    try {
+      if (existingId) {
+        await notionPatch("/api/workouts", { id: existingId, sessionDone: isNowDone, mode: weekMode });
+      } else if (isNowDone) {
+        const data = await notionPost("/api/workouts", {
+          date, mode: weekMode,
+          warmupDone: !!warmupLog[date],
+          sessionDone: true,
+          bbarCount: Object.entries(bbarLog)
+            .filter(([k]) => k.startsWith(date + "_"))
+            .reduce((sum, [, v]) => sum + (typeof v === "number" ? v : 0), 0),
+        });
+        if (data.id) setWorkoutNotionIds(prev => ({ ...prev, [date]: data.id }));
+      }
+    } catch { /* offline */ }
+
+    // Sync habit entry to Notion habits DB for that date
+    try {
+      const existingHabitId = habitLog[habitKey]?.notionId;
+      const hData = await notionPost("/api/habits", {
+        date, habitId: "session", done: isNowDone, notionId: existingHabitId || null,
+      });
+      if (hData.notionId && !existingHabitId) {
+        setHabitLog(prev => ({ ...prev, [habitKey]: { done: isNowDone, notionId: hData.notionId } }));
+      }
+    } catch { /* offline */ }
   }
 
   // ── B-Bars state (persisted per day, 0–3 count per exercise) ─────────────────
@@ -1206,7 +1257,7 @@ export default function WorkoutDashboard() {
                     {day}{isSwapped ? " ↔" : ""}
                   </div>
                   <div style={{ fontSize: 9, color: isSelected ? T.amber : dotColor, opacity: 0.85, lineHeight: 1.4 }}>
-                    {locked ? "🔒" : isRest ? "Rest" : isOpt ? "Opt" : sess?.label?.split(" ")[0]}
+                    {isRest ? "Rest" : isDayDone(day) ? "✓" : isOpt ? "Opt" : sess?.label?.split(" ")[0]}
                   </div>
                 </div>
               );
@@ -1259,6 +1310,22 @@ export default function WorkoutDashboard() {
                       </span>
                     )}
                   </div>
+                  {/* Done toggle button (non-rest days only) */}
+                  {!isRest && (() => {
+                    const done = isDayDone(day);
+                    return (
+                      <button onClick={() => toggleDayDone(day)}
+                        title={locked ? "Done — sets logged" : done ? "Mark as not done" : "Mark as done"}
+                        style={{ width: 28, height: 28, borderRadius: 8, flexShrink: 0,
+                          border: `1px solid ${done ? T.green + "99" : T.border}`,
+                          background: done ? T.green + "22" : "transparent",
+                          color: done ? T.green : T.txtMuted,
+                          fontSize: 13, cursor: locked ? "default" : "pointer",
+                          display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        {done ? "✓" : "○"}
+                      </button>
+                    );
+                  })()}
                   {/* Swap button */}
                   <button onClick={handleSwapTap}
                     title={locked ? "Locked — sets already logged" : isSelected ? "Cancel" : "Swap this day"}

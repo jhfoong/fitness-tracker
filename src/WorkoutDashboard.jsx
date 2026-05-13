@@ -577,6 +577,7 @@ export default function WorkoutDashboard() {
   const [swapLog, setSwapLog] = useLocalStorage("wt_swaps", {}); // { "2026-W20": { "Mon": "Thu", "Thu": "Mon" } }
   const [swapSelectDay, setSwapSelectDay] = useState(null); // day highlighted for swapping in Week tab
   const [showReschedule, setShowReschedule] = useState(false); // Today tab reschedule picker
+  const [workoutNotionIds, setWorkoutNotionIds] = useLocalStorage("wt_workout_notionids", {});
 
   const today = getTodayKey();
   const variant = getWeekVariant(); // "A" or "B" — switches every 2 weeks
@@ -633,6 +634,47 @@ export default function WorkoutDashboard() {
               });
               return updated;
             });
+          }
+        }
+      } catch { ok = false; }
+
+      try {
+        // Current week's workout log — merge mode, warmup, session done
+        const weekStart = getWeekStart(new Date());
+        const weekEnd = new Date(weekStart);
+        weekEnd.setDate(weekEnd.getDate() + 6);
+        const fmt = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+        const wkRes = await fetch(`/api/workouts?from=${fmt(weekStart)}&to=${fmt(weekEnd)}`);
+        if (wkRes.ok) {
+          const rows = await wkRes.json();
+          if (rows.length > 0) {
+            // Store notionIds for future PATCH calls
+            setWorkoutNotionIds(prev => {
+              const updated = { ...prev };
+              rows.forEach(r => { updated[r.date] = r.id; });
+              return updated;
+            });
+            // Sync week mode from the most recent row (other device may have changed it)
+            const latest = rows[rows.length - 1];
+            if (latest.mode === "busy" || latest.mode === "regular") {
+              setWeekMode(latest.mode);
+            }
+            // Sync warmup done for each day
+            rows.forEach(r => {
+              if (r.warmupDone) {
+                setWarmupLog(prev => prev[r.date] ? prev : { ...prev, [r.date]: true });
+              }
+            });
+            // Sync today's session done as a habit tick (don't undo if local is already done)
+            const todayStr = getTodayDateKey();
+            const todayRow = rows.find(r => r.date === todayStr);
+            if (todayRow?.sessionDone) {
+              setHabitLog(prev => {
+                const key = `${todayStr}_session`;
+                if (prev[key]?.done) return prev;
+                return { ...prev, [key]: { done: true, notionId: prev[key]?.notionId || null } };
+              });
+            }
           }
         }
       } catch { ok = false; }
@@ -722,6 +764,29 @@ export default function WorkoutDashboard() {
   // ── Warm-up state (lifted to localStorage so Habits tab can drive it) ────────
   function isWarmupDone() { return !!warmupLog[getTodayDateKey()]; }
   function markWarmupDone() { setWarmupLog(prev => ({ ...prev, [getTodayDateKey()]: true })); }
+
+  async function syncTodayWorkout(overrides = {}) {
+    const date = getTodayDateKey();
+    const bbarCount = Object.entries(bbarLog)
+      .filter(([k]) => k.startsWith(date + "_"))
+      .reduce((sum, [, v]) => sum + (typeof v === "number" ? v : 0), 0);
+    const payload = {
+      date,
+      mode:        overrides.mode        ?? weekMode,
+      warmupDone:  overrides.warmupDone  ?? !!warmupLog[date],
+      sessionDone: overrides.sessionDone ?? sessionComplete,
+      bbarCount:   overrides.bbarCount   ?? bbarCount,
+    };
+    const existingId = workoutNotionIds[date];
+    try {
+      if (existingId) {
+        await notionPatch("/api/workouts", { id: existingId, ...payload });
+      } else {
+        const data = await notionPost("/api/workouts", payload);
+        if (data.id) setWorkoutNotionIds(prev => ({ ...prev, [date]: data.id }));
+      }
+    } catch { /* offline — will sync next time */ }
+  }
 
   // ── B-Bars state (persisted per day, 0–3 count per exercise) ─────────────────
   function getBbarCount(exId) { return bbarLog[`${getTodayDateKey()}_${exId}`] || 0; }
@@ -844,9 +909,12 @@ export default function WorkoutDashboard() {
   const doneCount = sessionExercises.filter(ex => getCompleted(ex.id) >= (ex.sets || 3)).length;
   const sessionComplete = sessionExercises.length > 0 && doneCount === sessionExercises.length;
 
-  // Auto-tick session habit when all sets are complete
+  // Auto-tick session habit + sync to Notion when all sets are complete
   useEffect(() => {
-    if (sessionComplete && !habitDone("session")) toggleHabit("session");
+    if (sessionComplete) {
+      if (!habitDone("session")) toggleHabit("session");
+      syncTodayWorkout({ sessionDone: true });
+    }
   }, [sessionComplete]); // eslint-disable-line
 
   // Convenience: tick a habit only if not already done
@@ -885,7 +953,7 @@ export default function WorkoutDashboard() {
           { key: "busy", label: "Busy week", sub: "3 days + optional workout" },
           { key: "regular", label: "Regular week", sub: "4 days + optional workout" },
         ].map(({ key, label, sub }) => (
-          <button key={key} onClick={() => setWeekMode(key)}
+          <button key={key} onClick={() => { setWeekMode(key); syncTodayWorkout({ mode: key }); }}
             style={{ flex: 1, padding: "12px 14px", borderRadius: 10, cursor: "pointer",
               textAlign: "left", border: weekMode === key ? `2px solid ${T.blue}` : `1px solid ${T.border}`,
               background: weekMode === key ? "#1e3a5f" : T.surface, outline: "none" }}>
@@ -1015,7 +1083,7 @@ export default function WorkoutDashboard() {
           </Card>
 
           {/* Warm-up */}
-          {!isRestDay && <WarmUpPanel done={isWarmupDone()} onDone={() => { markWarmupDone(); autoTickHabit("warmup"); }} />}
+          {!isRestDay && <WarmUpPanel done={isWarmupDone()} onDone={() => { markWarmupDone(); autoTickHabit("warmup"); syncTodayWorkout({ warmupDone: true }); }} />}
 
           {/* Main exercises */}
           {!isRestDay && sessionExercises.length > 0 && (
